@@ -1,0 +1,1102 @@
+---
+description: 
+globs: *.ts
+alwaysApply: false
+---
+# TipTap富文本编辑器开发规范
+
+## 编辑器架构设计
+
+### 核心扩展配置
+```typescript
+import { Editor } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Placeholder from '@tiptap/extension-placeholder';
+import CharacterCount from '@tiptap/extension-character-count';
+import Table from '@tiptap/extension-table';
+import TableRow from '@tiptap/extension-table-row';
+import TableCell from '@tiptap/extension-table-cell';
+import TableHeader from '@tiptap/extension-table-header';
+import Image from '@tiptap/extension-image';
+import Link from '@tiptap/extension-link';
+import TextStyle from '@tiptap/extension-text-style';
+import Color from '@tiptap/extension-color';
+import Highlight from '@tiptap/extension-highlight';
+
+/**
+ * 公估报告编辑器扩展配置
+ */
+export const reportEditorExtensions = [
+  StarterKit.configure({
+    bulletList: {
+      HTMLAttributes: {
+        class: 'report-bullet-list',
+      },
+    },
+    orderedList: {
+      HTMLAttributes: {
+        class: 'report-ordered-list',
+      },
+    },
+    heading: {
+      levels: [1, 2, 3, 4],
+      HTMLAttributes: {
+        class: 'report-heading',
+      },
+    },
+    paragraph: {
+      HTMLAttributes: {
+        class: 'report-paragraph',
+      },
+    },
+  }),
+  
+  Placeholder.configure({
+    placeholder: ({ node }) => {
+      if (node.type.name === 'heading') {
+        return '请输入标题...';
+      }
+      return '请输入内容...';
+    },
+  }),
+  
+  CharacterCount.configure({
+    limit: 50000, // 单章节字数限制
+  }),
+  
+  Table.configure({
+    resizable: true,
+    HTMLAttributes: {
+      class: 'report-table',
+    },
+  }),
+  TableRow,
+  TableHeader,
+  TableCell,
+  
+  Image.configure({
+    HTMLAttributes: {
+      class: 'report-image',
+    },
+  }),
+  
+  Link.configure({
+    openOnClick: false,
+    HTMLAttributes: {
+      class: 'report-link',
+      rel: 'noopener noreferrer',
+      target: '_blank',
+    },
+  }),
+  
+  TextStyle,
+  Color,
+  
+  Highlight.configure({
+    multicolor: true,
+    HTMLAttributes: {
+      class: 'report-highlight',
+    },
+  }),
+  
+  // 自定义扩展
+  ReportChapterExtension,
+  AIContentExtension,
+];
+```
+
+### 自定义扩展开发
+
+#### 报告章节扩展
+```typescript
+import { Node, mergeAttributes } from '@tiptap/core';
+import { ReactNodeViewRenderer } from '@tiptap/react';
+import { ChapterNodeView } from './ChapterNodeView';
+
+export interface ChapterOptions {
+  HTMLAttributes: Record<string, any>;
+}
+
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    reportChapter: {
+      /**
+       * 插入报告章节
+       */
+      insertChapter: (options: { 
+        type: AI.ChapterType; 
+        title: string; 
+        content?: string;
+      }) => ReturnType;
+      
+      /**
+       * 更新章节内容
+       */
+      updateChapter: (options: {
+        chapterType: AI.ChapterType;
+        content: string;
+      }) => ReturnType;
+    };
+  }
+}
+
+export const ReportChapterExtension = Node.create<ChapterOptions>({
+  name: 'reportChapter',
+  
+  group: 'block',
+  
+  content: 'block+',
+  
+  defining: true,
+  
+  addOptions() {
+    return {
+      HTMLAttributes: {},
+    };
+  },
+  
+  addAttributes() {
+    return {
+      chapterType: {
+        default: null,
+        parseHTML: element => element.getAttribute('data-chapter-type'),
+        renderHTML: attributes => {
+          if (!attributes.chapterType) {
+            return {};
+          }
+          return {
+            'data-chapter-type': attributes.chapterType,
+          };
+        },
+      },
+      chapterTitle: {
+        default: '',
+        parseHTML: element => element.getAttribute('data-chapter-title'),
+        renderHTML: attributes => {
+          if (!attributes.chapterTitle) {
+            return {};
+          }
+          return {
+            'data-chapter-title': attributes.chapterTitle,
+          };
+        },
+      },
+    };
+  },
+  
+  parseHTML() {
+    return [
+      {
+        tag: 'div[data-chapter-type]',
+      },
+    ];
+  },
+  
+  renderHTML({ HTMLAttributes }) {
+    return [
+      'div',
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
+        class: 'report-chapter',
+      }),
+      0,
+    ];
+  },
+  
+  addNodeView() {
+    return ReactNodeViewRenderer(ChapterNodeView);
+  },
+  
+  addCommands() {
+    return {
+      insertChapter:
+        (options) =>
+        ({ tr, dispatch }) => {
+          const { type, title, content = '' } = options;
+          
+          if (dispatch) {
+            const node = this.type.create(
+              {
+                chapterType: type,
+                chapterTitle: title,
+              },
+              this.editor.schema.nodes.paragraph.create({}, 
+                this.editor.schema.text(content)
+              )
+            );
+            
+            tr.replaceSelectionWith(node);
+          }
+          
+          return true;
+        },
+        
+      updateChapter:
+        (options) =>
+        ({ tr, dispatch }) => {
+          const { chapterType, content } = options;
+          
+          if (dispatch) {
+            // 查找对应章节并更新内容
+            const { doc } = tr;
+            doc.descendants((node, pos) => {
+              if (
+                node.type.name === 'reportChapter' &&
+                node.attrs.chapterType === chapterType
+              ) {
+                const contentNode = this.editor.schema.nodes.paragraph.create(
+                  {},
+                  this.editor.schema.text(content)
+                );
+                tr.replaceWith(pos + 1, pos + node.content.size + 1, contentNode);
+                return false; // 停止遍历
+              }
+            });
+          }
+          
+          return true;
+        },
+    };
+  },
+});
+```
+
+#### AI内容生成扩展
+```typescript
+import { Extension } from '@tiptap/core';
+
+export interface AIContentOptions {
+  onGenerateContent?: (params: {
+    chapterType: AI.ChapterType;
+    contextText: string;
+  }) => Promise<string>;
+}
+
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    aiContent: {
+      /**
+       * 生成AI内容
+       */
+      generateAIContent: (options: {
+        chapterType: AI.ChapterType;
+        contextText: string;
+        position?: number;
+      }) => ReturnType;
+      
+      /**
+       * 插入AI生成的内容
+       */
+      insertAIContent: (content: string) => ReturnType;
+    };
+  }
+}
+
+export const AIContentExtension = Extension.create<AIContentOptions>({
+  name: 'aiContent',
+  
+  addOptions() {
+    return {
+      onGenerateContent: undefined,
+    };
+  },
+  
+  addCommands() {
+    return {
+      generateAIContent:
+        (options) =>
+        async ({ tr, dispatch, editor }) => {
+          const { chapterType, contextText, position } = options;
+          
+          if (!this.options.onGenerateContent) {
+            console.warn('onGenerateContent handler not configured');
+            return false;
+          }
+          
+          try {
+            // 显示加载状态
+            editor.emit('ai:generating', { chapterType });
+            
+            const content = await this.options.onGenerateContent({
+              chapterType,
+              contextText,
+            });
+            
+            if (dispatch) {
+              const insertPos = position ?? tr.selection.from;
+              const contentNode = editor.schema.nodeFromJSON({
+                type: 'paragraph',
+                content: [
+                  {
+                    type: 'text',
+                    text: content,
+                  },
+                ],
+              });
+              
+              tr.insert(insertPos, contentNode);
+            }
+            
+            editor.emit('ai:generated', { chapterType, content });
+            
+            return true;
+          } catch (error) {
+            editor.emit('ai:error', { chapterType, error });
+            return false;
+          }
+        },
+        
+      insertAIContent:
+        (content) =>
+        ({ tr, dispatch, editor }) => {
+          if (dispatch) {
+            // 解析HTML内容并插入
+            const dom = new DOMParser().parseFromString(content, 'text/html');
+            const slice = editor.view.someProp('transformPastedHTML', f => f(content, editor.view)) || content;
+            const fragment = editor.view.someProp('transformPastedText', f => f(slice, editor.view)) || slice;
+            
+            tr.replaceSelectionWith(
+              editor.schema.text(fragment)
+            );
+          }
+          
+          return true;
+        },
+    };
+  },
+  
+  addGlobalAttributes() {
+    return [
+      {
+        types: ['paragraph', 'heading'],
+        attributes: {
+          'data-ai-generated': {
+            default: null,
+            parseHTML: element => element.getAttribute('data-ai-generated'),
+            renderHTML: attributes => {
+              if (!attributes['data-ai-generated']) {
+                return {};
+              }
+              
+              return {
+                'data-ai-generated': attributes['data-ai-generated'],
+                class: 'ai-generated-content',
+              };
+            },
+          },
+        },
+      },
+    ];
+  },
+});
+```
+
+### React组件集成
+
+#### 编辑器主组件
+```typescript
+import React, { useCallback, useEffect, useState } from 'react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import { Editor } from '@tiptap/core';
+import { reportEditorExtensions } from './extensions';
+import { EditorToolbar } from './EditorToolbar';
+import { ChapterSidebar } from './ChapterSidebar';
+import { AIAssistant } from './AIAssistant';
+
+interface ReportEditorProps {
+  /** 报告ID */
+  reportId: string;
+  /** 初始内容 */
+  initialContent?: string;
+  /** 是否只读 */
+  readonly?: boolean;
+  /** 保存回调 */
+  onSave?: (content: string) => void;
+  /** 内容变更回调 */
+  onChange?: (content: string) => void;
+  /** AI生成回调 */
+  onAIGenerate?: (params: {
+    chapterType: AI.ChapterType;
+    contextText: string;
+  }) => Promise<string>;
+  /** 样式类名 */
+  className?: string;
+}
+
+export const ReportEditor: React.FC<ReportEditorProps> = ({
+  reportId,
+  initialContent = '',
+  readonly = false,
+  onSave,
+  onChange,
+  onAIGenerate,
+  className
+}) => {
+  const [isAIGenerating, setIsAIGenerating] = useState(false);
+  const [currentChapter, setCurrentChapter] = useState<AI.ChapterType | null>(null);
+  
+  // 编辑器实例
+  const editor = useEditor({
+    extensions: reportEditorExtensions,
+    content: initialContent,
+    editable: !readonly,
+    
+    // 编辑器选项
+    editorProps: {
+      attributes: {
+        class: cn(
+          'prose prose-lg max-w-none focus:outline-none',
+          'min-h-[600px] p-4',
+          className
+        ),
+      },
+    },
+    
+    // 内容更新回调
+    onUpdate: ({ editor }) => {
+      const content = editor.getHTML();
+      onChange?.(content);
+    },
+    
+    // 焦点变化回调
+    onSelectionUpdate: ({ editor }) => {
+      // 检测当前章节
+      const currentChapterType = getCurrentChapterType(editor);
+      setCurrentChapter(currentChapterType);
+    },
+  });
+  
+  // AI内容生成处理
+  const handleAIGenerate = useCallback(async (params: {
+    chapterType: AI.ChapterType;
+    contextText: string;
+  }) => {
+    if (!onAIGenerate || !editor) return;
+    
+    try {
+      setIsAIGenerating(true);
+      const content = await onAIGenerate(params);
+      
+      // 插入生成的内容
+      editor.chain()
+        .focus()
+        .insertAIContent(content)
+        .run();
+        
+    } catch (error) {
+      console.error('AI生成失败:', error);
+    } finally {
+      setIsAIGenerating(false);
+    }
+  }, [editor, onAIGenerate]);
+  
+  // 保存处理
+  const handleSave = useCallback(() => {
+    if (!editor) return;
+    
+    const content = editor.getHTML();
+    onSave?.(content);
+  }, [editor, onSave]);
+  
+  // 插入章节
+  const handleInsertChapter = useCallback((
+    chapterType: AI.ChapterType,
+    title: string
+  ) => {
+    if (!editor) return;
+    
+    editor.chain()
+      .focus()
+      .insertChapter({ type: chapterType, title })
+      .run();
+  }, [editor]);
+  
+  // 清理编辑器
+  useEffect(() => {
+    return () => {
+      editor?.destroy();
+    };
+  }, [editor]);
+  
+  if (!editor) {
+    return <div className="flex items-center justify-center h-64">
+      <div className="text-gray-500">编辑器加载中...</div>
+    </div>;
+  }
+  
+  return (
+    <div className="flex h-full bg-white">
+      {/* 章节侧边栏 */}
+      <ChapterSidebar
+        editor={editor}
+        currentChapter={currentChapter}
+        onInsertChapter={handleInsertChapter}
+        className="w-64 border-r border-gray-200"
+      />
+      
+      {/* 编辑器主体 */}
+      <div className="flex-1 flex flex-col">
+        {/* 工具栏 */}
+        <EditorToolbar
+          editor={editor}
+          onSave={handleSave}
+          readonly={readonly}
+          className="border-b border-gray-200 p-2"
+        />
+        
+        {/* 编辑内容区 */}
+        <div className="flex-1 overflow-auto">
+          <EditorContent 
+            editor={editor}
+            className="h-full"
+          />
+        </div>
+      </div>
+      
+      {/* AI助手面板 */}
+      <AIAssistant
+        editor={editor}
+        currentChapter={currentChapter}
+        isGenerating={isAIGenerating}
+        onGenerate={handleAIGenerate}
+        className="w-80 border-l border-gray-200"
+      />
+    </div>
+  );
+};
+
+// 工具函数：获取当前章节类型
+function getCurrentChapterType(editor: Editor): AI.ChapterType | null {
+  const { selection } = editor.state;
+  let chapterType: AI.ChapterType | null = null;
+  
+  editor.state.doc.nodesBetween(selection.from, selection.to, (node) => {
+    if (node.type.name === 'reportChapter' && node.attrs.chapterType) {
+      chapterType = node.attrs.chapterType;
+      return false; // 停止遍历
+    }
+  });
+  
+  return chapterType;
+}
+```
+
+#### 章节节点视图组件
+```typescript
+import React from 'react';
+import { NodeViewWrapper, NodeViewContent } from '@tiptap/react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { 
+  ChevronDown, 
+  ChevronRight, 
+  Bot, 
+  Edit3,
+  Trash2 
+} from 'lucide-react';
+
+interface ChapterNodeViewProps {
+  node: any;
+  updateAttributes: (attributes: Record<string, any>) => void;
+  deleteNode: () => void;
+}
+
+export const ChapterNodeView: React.FC<ChapterNodeViewProps> = ({
+  node,
+  updateAttributes,
+  deleteNode
+}) => {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const { chapterType, chapterTitle } = node.attrs;
+  
+  // 章节类型映射
+  const chapterTypeMap: Record<AI.ChapterType, string> = {
+    accident_details: '事故经过及索赔',
+    policy_summary: '保单内容摘要',
+    site_investigation: '现场查勘情况',
+    cause_analysis: '事故原因分析',
+    loss_assessment: '损失核定',
+  };
+  
+  const displayTitle = chapterTitle || chapterTypeMap[chapterType] || '未知章节';
+  
+  return (
+    <NodeViewWrapper className="report-chapter-wrapper">
+      <div className="border border-gray-200 rounded-lg bg-gray-50 mb-4">
+        {/* 章节头部 */}
+        <div className="flex items-center justify-between p-3 bg-gray-100 rounded-t-lg">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              className="p-1 h-6 w-6"
+            >
+              {isCollapsed ? (
+                <ChevronRight className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </Button>
+            
+            <h3 className="font-medium text-gray-900">{displayTitle}</h3>
+            
+            <Badge variant="outline" className="text-xs">
+              {chapterType}
+            </Badge>
+          </div>
+          
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                // 触发AI生成
+                // 这里需要与父组件通信
+              }}
+              className="p-1 h-6 w-6"
+              title="AI生成内容"
+            >
+              <Bot className="h-4 w-4" />
+            </Button>
+            
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const newTitle = prompt('修改章节标题:', chapterTitle);
+                if (newTitle !== null) {
+                  updateAttributes({ chapterTitle: newTitle });
+                }
+              }}
+              className="p-1 h-6 w-6"
+              title="编辑章节"
+            >
+              <Edit3 className="h-4 w-4" />
+            </Button>
+            
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                if (confirm('确定要删除这个章节吗？')) {
+                  deleteNode();
+                }
+              }}
+              className="p-1 h-6 w-6 text-red-600 hover:text-red-800"
+              title="删除章节"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+        
+        {/* 章节内容 */}
+        {!isCollapsed && (
+          <div className="p-4 bg-white rounded-b-lg">
+            <NodeViewContent className="chapter-content" />
+          </div>
+        )}
+      </div>
+    </NodeViewWrapper>
+  );
+};
+```
+
+### 工具栏组件
+```typescript
+import React from 'react';
+import { Editor } from '@tiptap/core';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import {
+  Bold,
+  Italic,
+  Underline,
+  Strikethrough,
+  List,
+  ListOrdered,
+  Quote,
+  Code,
+  Link,
+  Image,
+  Table,
+  Heading1,
+  Heading2,
+  Heading3,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  Undo,
+  Redo,
+  Save
+} from 'lucide-react';
+
+interface EditorToolbarProps {
+  editor: Editor;
+  onSave?: () => void;
+  readonly?: boolean;
+  className?: string;
+}
+
+export const EditorToolbar: React.FC<EditorToolbarProps> = ({
+  editor,
+  onSave,
+  readonly = false,
+  className
+}) => {
+  if (readonly) {
+    return null;
+  }
+  
+  const ToolbarButton: React.FC<{
+    onClick: () => void;
+    isActive?: boolean;
+    disabled?: boolean;
+    icon: React.ReactNode;
+    title: string;
+  }> = ({ onClick, isActive, disabled, icon, title }) => (
+    <Button
+      variant={isActive ? "secondary" : "ghost"}
+      size="sm"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className="h-8 w-8 p-1"
+    >
+      {icon}
+    </Button>
+  );
+  
+  return (
+    <div className={cn("flex items-center gap-1 p-2 bg-white", className)}>
+      {/* 撤销/重做 */}
+      <ToolbarButton
+        onClick={() => editor.chain().focus().undo().run()}
+        disabled={!editor.can().undo()}
+        icon={<Undo className="h-4 w-4" />}
+        title="撤销"
+      />
+      <ToolbarButton
+        onClick={() => editor.chain().focus().redo().run()}
+        disabled={!editor.can().redo()}
+        icon={<Redo className="h-4 w-4" />}
+        title="重做"
+      />
+      
+      <Separator orientation="vertical" className="h-6 mx-1" />
+      
+      {/* 文本格式 */}
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleBold().run()}
+        isActive={editor.isActive('bold')}
+        icon={<Bold className="h-4 w-4" />}
+        title="粗体"
+      />
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleItalic().run()}
+        isActive={editor.isActive('italic')}
+        icon={<Italic className="h-4 w-4" />}
+        title="斜体"
+      />
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleUnderline().run()}
+        isActive={editor.isActive('underline')}
+        icon={<Underline className="h-4 w-4" />}
+        title="下划线"
+      />
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleStrike().run()}
+        isActive={editor.isActive('strike')}
+        icon={<Strikethrough className="h-4 w-4" />}
+        title="删除线"
+      />
+      
+      <Separator orientation="vertical" className="h-6 mx-1" />
+      
+      {/* 标题 */}
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+        isActive={editor.isActive('heading', { level: 1 })}
+        icon={<Heading1 className="h-4 w-4" />}
+        title="一级标题"
+      />
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+        isActive={editor.isActive('heading', { level: 2 })}
+        icon={<Heading2 className="h-4 w-4" />}
+        title="二级标题"
+      />
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+        isActive={editor.isActive('heading', { level: 3 })}
+        icon={<Heading3 className="h-4 w-4" />}
+        title="三级标题"
+      />
+      
+      <Separator orientation="vertical" className="h-6 mx-1" />
+      
+      {/* 列表 */}
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleBulletList().run()}
+        isActive={editor.isActive('bulletList')}
+        icon={<List className="h-4 w-4" />}
+        title="无序列表"
+      />
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        isActive={editor.isActive('orderedList')}
+        icon={<ListOrdered className="h-4 w-4" />}
+        title="有序列表"
+      />
+      
+      <Separator orientation="vertical" className="h-6 mx-1" />
+      
+      {/* 引用和代码 */}
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleBlockquote().run()}
+        isActive={editor.isActive('blockquote')}
+        icon={<Quote className="h-4 w-4" />}
+        title="引用"
+      />
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleCode().run()}
+        isActive={editor.isActive('code')}
+        icon={<Code className="h-4 w-4" />}
+        title="代码"
+      />
+      
+      <Separator orientation="vertical" className="h-6 mx-1" />
+      
+      {/* 链接和图片 */}
+      <ToolbarButton
+        onClick={() => {
+          const url = prompt('请输入链接地址:');
+          if (url) {
+            editor.chain().focus().setLink({ href: url }).run();
+          }
+        }}
+        isActive={editor.isActive('link')}
+        icon={<Link className="h-4 w-4" />}
+        title="插入链接"
+      />
+      <ToolbarButton
+        onClick={() => {
+          const url = prompt('请输入图片地址:');
+          if (url) {
+            editor.chain().focus().setImage({ src: url }).run();
+          }
+        }}
+        icon={<Image className="h-4 w-4" />}
+        title="插入图片"
+      />
+      
+      {/* 表格 */}
+      <ToolbarButton
+        onClick={() => 
+          editor.chain().focus().insertTable({ 
+            rows: 3, 
+            cols: 3, 
+            withHeaderRow: true 
+          }).run()
+        }
+        icon={<Table className="h-4 w-4" />}
+        title="插入表格"
+      />
+      
+      <div className="flex-1" />
+      
+      {/* 保存按钮 */}
+      {onSave && (
+        <Button
+          onClick={onSave}
+          variant="default"
+          size="sm"
+          className="ml-2"
+        >
+          <Save className="h-4 w-4 mr-1" />
+          保存
+        </Button>
+      )}
+    </div>
+  );
+};
+```
+
+### 样式定制
+
+#### 编辑器CSS样式
+```css
+/* 编辑器基础样式 */
+.ProseMirror {
+  outline: none;
+  padding: 16px;
+  line-height: 1.6;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* 报告段落样式 */
+.report-paragraph {
+  margin: 8px 0;
+  text-align: justify;
+  text-indent: 2em; /* 中文段落首行缩进 */
+}
+
+/* 报告标题样式 */
+.report-heading {
+  margin: 16px 0 8px 0;
+  font-weight: bold;
+  text-indent: 0; /* 标题不缩进 */
+}
+
+.report-heading h1 {
+  font-size: 1.875rem;
+  color: #1f2937;
+}
+
+.report-heading h2 {
+  font-size: 1.5rem;
+  color: #374151;
+}
+
+.report-heading h3 {
+  font-size: 1.25rem;
+  color: #4b5563;
+}
+
+.report-heading h4 {
+  font-size: 1.125rem;
+  color: #6b7280;
+}
+
+/* 列表样式 */
+.report-bullet-list,
+.report-ordered-list {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.report-bullet-list li,
+.report-ordered-list li {
+  margin: 4px 0;
+  text-indent: 0;
+}
+
+/* 表格样式 */
+.report-table {
+  border-collapse: collapse;
+  margin: 16px 0;
+  width: 100%;
+}
+
+.report-table td,
+.report-table th {
+  border: 1px solid #d1d5db;
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.report-table th {
+  background-color: #f3f4f6;
+  font-weight: bold;
+}
+
+/* 图片样式 */
+.report-image {
+  max-width: 100%;
+  height: auto;
+  margin: 16px 0;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* 链接样式 */
+.report-link {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.report-link:hover {
+  color: #1d4ed8;
+}
+
+/* 高亮样式 */
+.report-highlight {
+  background-color: #fef08a;
+  padding: 2px 4px;
+  border-radius: 2px;
+}
+
+/* AI生成内容样式 */
+.ai-generated-content {
+  position: relative;
+  background-color: #f0f9ff;
+  border-left: 3px solid #0ea5e9;
+  padding-left: 12px;
+}
+
+.ai-generated-content::before {
+  content: "AI生成";
+  position: absolute;
+  top: -8px;
+  left: 8px;
+  background-color: #0ea5e9;
+  color: white;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-weight: bold;
+}
+
+/* 章节容器样式 */
+.report-chapter-wrapper {
+  margin: 24px 0;
+}
+
+.chapter-content .ProseMirror {
+  padding: 0;
+}
+
+/* 占位符样式 */
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #9ca3af;
+  pointer-events: none;
+  height: 0;
+}
+
+/* 聚焦状态 */
+.ProseMirror:focus {
+  box-shadow: 0 0 0 2px #3b82f6;
+  border-radius: 4px;
+}
+
+/* 选中状态 */
+.ProseMirror .selectedCell {
+  background-color: #dbeafe !important;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .ProseMirror {
+    padding: 12px;
+    font-size: 14px;
+  }
+  
+  .report-paragraph {
+    text-indent: 1.5em;
+  }
+  
+  .report-table {
+    font-size: 12px;
+  }
+  
+  .report-table td,
+  .report-table th {
+    padding: 6px 8px;
+  }
+}
+```
+
+这个TipTap编辑器规范提供了完整的富文本编辑器开发指导，包括扩展配置、自定义扩展开发、React组件集成、工具栏实现和样式定制等方面，专门针对公估报告编辑的业务需求进行了优化。

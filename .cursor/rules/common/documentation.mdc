@@ -1,0 +1,358 @@
+---
+description: 
+globs: *.md
+alwaysApply: false
+---
+# 文档编写规范
+
+## 文档类型和用途
+
+### 技术文档
+- **API文档**: 使用OpenAPI 3.0规范，自动生成Swagger文档
+- **架构文档**: 系统设计、组件关系、数据流图
+- **部署文档**: 安装、配置、运维指南
+- **开发文档**: 环境搭建、编码规范、贡献指南
+
+### 业务文档
+- **产品需求文档(PRD)**: 功能需求、用户故事、验收标准
+- **用户手册**: 操作指南、功能说明、常见问题
+- **业务流程文档**: 保险理赔流程、报告生成流程
+
+## 文档结构规范
+
+### README.md 结构
+```markdown
+# 项目名称
+
+## 项目简介
+简短描述项目用途和核心价值
+
+## 功能特性
+- 核心功能1
+- 核心功能2
+- 核心功能3
+
+## 技术栈
+- 前端: React + Next.js + TypeScript
+- 后端: Python + FastAPI
+- 数据库: PostgreSQL
+- AI服务: OpenAI API
+
+## 快速开始
+### 环境要求
+### 安装步骤
+### 运行项目
+
+## 项目结构
+## API文档
+## 部署指南
+## 贡献指南
+## 许可证
+```
+
+### API文档规范
+每个API端点必须包含：
+```yaml
+/api/v1/reports:
+  post:
+    summary: 创建新的报告草稿
+    description: |
+      创建一个新的空白报告草稿，用户可以后续添加内容和生成AI章节。
+      
+      业务场景：
+      1. 公估师开始处理新的理赔案件
+      2. 需要创建结构化的报告文档
+      3. 为后续AI辅助生成章节做准备
+    parameters:
+      - name: title
+        description: 报告标题，建议格式：[被保险人]-[险种]-[事故日期]理赔报告
+        required: true
+        example: "某某公司-企业财产险-20240315火灾理赔报告"
+    responses:
+      201:
+        description: 报告创建成功
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportResponse'
+            example:
+              id: 1001
+              title: "某某公司-企业财产险-20240315火灾理赔报告"
+              status: "draft"
+      400:
+        description: 请求参数错误
+        content:
+          application/json:
+            example:
+              detail: "报告标题不能为空"
+```
+
+## 代码注释规范
+
+### Python函数文档
+```python
+def generate_ai_chapter(
+    chapter_type: str, 
+    context_data: str, 
+    report_id: int
+) -> dict:
+    """
+    生成报告章节内容
+    
+    Args:
+        chapter_type: 章节类型，支持以下值：
+            - "accident_details": 事故经过及索赔
+            - "policy_summary": 保单内容摘要  
+            - "site_investigation": 现场查勘情况
+            - "cause_analysis": 事故原因分析
+            - "loss_assessment": 损失核定
+        context_data: 用于生成章节的上下文信息，通常来自OCR识别结果
+        report_id: 报告ID，用于关联生成的内容
+        
+    Returns:
+        dict: 包含生成结果的字典
+        {
+            "success": bool,
+            "content": str,  # 生成的章节内容(HTML格式)
+            "tokens_used": int,  # 消耗的token数量
+            "generation_time": float  # 生成耗时(秒)
+        }
+        
+    Raises:
+        AIServiceError: AI服务调用失败
+        ValidationError: 输入参数验证失败
+        
+    Example:
+        >>> result = generate_ai_chapter(
+        ...     "accident_details", 
+        ...     "2024年3月15日，某某公司发生火灾...", 
+        ...     1001
+        ... )
+        >>> result["success"]
+        True
+    """
+```
+
+### TypeScript接口文档
+```typescript
+/**
+ * 报告数据接口
+ * 
+ * @interface ReportData
+ * @description 用于表示公估报告的完整数据结构
+ */
+interface ReportData {
+  /** 报告唯一标识符 */
+  id: number;
+  
+  /** 
+   * 报告标题
+   * @example "某某公司-企业财产险-20240315火灾理赔报告"
+   */
+  title: string;
+  
+  /** 
+   * 险种类型
+   * @enum {"企业财产险" | "车险" | "责任险" | "其他"}
+   */
+  insuranceType: InsuranceType;
+  
+  /** 
+   * 报告状态
+   * @enum {"draft" | "review" | "completed" | "archived"}
+   */
+  status: ReportStatus;
+  
+  /** 
+   * 报告章节内容，使用JSON格式存储
+   * 键为章节标识，值为HTML格式的章节内容
+   */
+  content: Record<string, string>;
+  
+  /** 创建时间 */
+  createdAt: Date;
+  
+  /** 最后更新时间 */
+  updatedAt: Date;
+}
+
+/**
+ * 生成AI章节的请求参数
+ * 
+ * @interface GenerateChapterRequest
+ */
+interface GenerateChapterRequest {
+  /** 章节类型，对应不同的AI提示词模板 */
+  chapterKey: ChapterType;
+  
+  /** 用于生成的上下文文本，通常来自OCR结果 */
+  contextText: string;
+  
+  /** 
+   * 生成参数配置
+   * @optional
+   */
+  options?: {
+    /** 创意程度 0-1，默认0.7 */
+    temperature?: number;
+    /** 最大生成长度，默认2000 */
+    maxTokens?: number;
+  };
+}
+```
+
+## 架构图和流程图规范
+
+### 使用Mermaid绘制图表
+```markdown
+## 系统架构图
+```mermaid
+graph TB
+    subgraph "前端层"
+        A[React应用] --> B[TipTap编辑器]
+        A --> C[文件上传组件]
+    end
+    
+    subgraph "后端层"  
+        D[FastAPI网关] --> E[认证服务]
+        D --> F[文件服务]
+        D --> G[报告服务]
+        G --> H[AI服务]
+        G --> I[OCR服务]
+    end
+    
+    subgraph "数据层"
+        J[(PostgreSQL)]
+        K[对象存储]
+    end
+    
+    A -.->|HTTPS API| D
+    E --> J
+    F --> K
+    G --> J
+    H -.->|API调用| L[大语言模型]
+    I -.->|API调用| M[OCR云服务]
+```
+
+### 业务流程图
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant F as 前端
+    participant B as 后端
+    participant O as OCR服务
+    participant A as AI服务
+    
+    U->>F: 上传PDF文件
+    F->>B: POST /files/upload
+    B->>O: 调用OCR识别
+    O-->>B: 返回文本内容
+    B-->>F: 返回文件信息
+    
+    U->>F: 请求生成章节
+    F->>B: POST /reports/{id}/generate-chapter
+    B->>A: 调用AI生成
+    A-->>B: 返回生成内容
+    B-->>F: 返回章节内容
+    F-->>U: 显示在编辑器中
+```
+
+## 变更日志规范
+
+### CHANGELOG.md 格式
+```markdown
+# 变更日志
+
+本项目的所有显著变更都将记录在此文件中。
+
+格式基于 [Keep a Changelog](mdc:https:/keepachangelog.com/zh-CN/1.0.0)，
+并且本项目遵循 [语义化版本](mdc:https:/semver.org/lang/zh-CN)。
+
+## [未发布]
+
+### 新增
+- 正在开发的新功能
+
+### 变更
+- 对现有功能的修改
+
+### 废弃
+- 即将移除的功能
+
+### 移除
+- 本版本移除的功能
+
+### 修复
+- Bug修复
+
+### 安全
+- 安全相关的修复
+
+## [1.0.0] - 2024-03-15
+
+### 新增
+- AI辅助报告章节生成功能
+- OCR文档识别和处理
+- 富文本编辑器集成
+- 用户认证和权限管理
+- Word文档导出功能
+
+### 技术实现
+- 前端使用React + Next.js架构
+- 后端使用FastAPI + PostgreSQL
+- 集成OpenAI GPT模型
+- Docker容器化部署
+
+[未发布]: https://github.com/yourorg/project/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/yourorg/project/releases/tag/v1.0.0
+```
+
+## 文档维护规范
+
+### 文档更新流程
+1. **同步更新**: 代码变更时同步更新相关文档
+2. **定期审查**: 每月审查文档的准确性和完整性
+3. **版本控制**: 重要文档变更需要版本标记
+4. **审查机制**: 文档变更需要经过同行审查
+
+### 文档质量检查清单
+- [ ] 内容准确无误，与实际代码一致
+- [ ] 结构清晰，层次分明
+- [ ] 代码示例可运行，结果正确
+- [ ] 链接有效，引用准确
+- [ ] 图表清晰，说明充分
+- [ ] 拼写检查通过
+- [ ] 格式符合规范
+
+### 文档工具推荐
+- **Markdown编辑**: Typora, Mark Text
+- **图表绘制**: Mermaid, Draw.io
+- **API文档**: Swagger UI, Redoc
+- **文档网站**: GitBook, VuePress, Docusaurus
+
+## 特殊文档要求
+
+### 保险业务术语
+文档中涉及保险专业术语时，必须：
+1. 首次出现时提供简短解释
+2. 维护术语表(glossary.md)
+3. 使用行业标准表述
+
+### 示例术语表
+```markdown
+## 保险术语表
+
+**公估师**: 保险公估师，独立于保险公司和被保险人的第三方专业人士，负责查勘、检验、估损、理算保险事故。
+
+**标的**: 保险标的，保险合同保障的对象，可以是财产、人身、责任等。
+
+**出险**: 发生保险事故，触发保险责任。
+
+**查勘**: 保险事故发生后，对事故现场、损失情况进行实地调查和检验。
+```
+
+## 文档国际化
+如需支持多语言文档：
+- 使用ISO 639-1语言代码
+- 目录结构: `docs/zh-CN/`, `docs/en/`
+- 保持各语言版本内容同步

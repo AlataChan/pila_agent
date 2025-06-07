@@ -1,0 +1,851 @@
+---
+description: when agent and LLMs to chekf insurance type
+globs: 
+alwaysApply: false
+---
+# 保险公估业务领域规范
+
+## 业务术语标准化
+
+### 核心业务概念
+```typescript
+/**
+ * 保险行业标准术语定义
+ */
+export namespace InsuranceDomain {
+  /** 险种分类 */
+  export type InsuranceType = 
+    | '企业财产险'    // Enterprise Property Insurance
+    | '车险'          // Motor Insurance
+    | '责任险'        // Liability Insurance
+    | '工程险'        // Engineering Insurance
+    | '货运险'        // Cargo Insurance
+    | '意外险'        // Accident Insurance
+    | '其他'          // Others;
+
+  /** 事故类型 */
+  export type AccidentType =
+    | '火灾'          // Fire
+    | '水灾'          // Flood
+    | '盗抢'          // Theft/Robbery
+    | '自然灾害'      // Natural Disaster
+    | '交通事故'      // Traffic Accident
+    | '机械故障'      // Mechanical Failure
+    | '人为损坏'      // Intentional Damage
+    | '其他意外'      // Other Accidents;
+
+  /** 损失类型 */
+  export type LossType =
+    | '直接损失'      // Direct Loss
+    | '间接损失'      // Indirect Loss
+    | '费用损失'      // Expense Loss
+    | '营业中断损失'  // Business Interruption Loss;
+
+  /** 理赔状态 */
+  export type ClaimStatus =
+    | '报案'          // Reported
+    | '立案'          // Filed
+    | '查勘'          // Investigation
+    | '定损'          // Assessment
+    | '核损'          // Verification
+    | '理算'          // Calculation
+    | '核赔'          // Approval
+    | '支付'          // Payment
+    | '结案'          // Closed;
+
+  /** 公估结论类型 */
+  export type AssessmentConclusion =
+    | '属于保险责任'      // Within Coverage
+    | '不属于保险责任'    // Outside Coverage
+    | '部分属于保险责任'  // Partial Coverage
+    | '需进一步调查'      // Need Further Investigation;
+}
+```
+
+### 报告章节结构标准
+```typescript
+/**
+ * 公估报告标准章节结构
+ */
+export interface StandardReportStructure {
+  /** 1. 基本信息 */
+  basicInfo: {
+    reportTitle: string;          // 报告标题
+    insuranceCompany: string;     // 保险公司
+    policyNumber: string;         // 保单号码
+    insuredName: string;          // 被保险人
+    accidentDate: Date;           // 出险日期
+    reportDate: Date;             // 报告日期
+    assessorName: string;         // 公估师姓名
+    assessorLicense: string;      // 执业证号
+  };
+
+  /** 2. 事故经过及索赔情况 */
+  accidentDetails: {
+    accidentDescription: string;  // 事故经过描述
+    reportingProcess: string;     // 报案过程
+    claimedAmount: number;        // 索赔金额
+    claimedItems: ClaimedItem[];  // 索赔项目清单
+  };
+
+  /** 3. 保单内容摘要 */
+  policySummary: {
+    policyType: InsuranceType;    // 险种类型
+    coverageScope: string;        // 保险责任范围
+    insuredAmount: number;        // 保险金额
+    deductible: number;           // 免赔额
+    policyPeriod: {               // 保险期间
+      startDate: Date;
+      endDate: Date;
+    };
+    specialTerms: string[];       // 特别约定
+  };
+
+  /** 4. 现场查勘情况 */
+  siteInvestigation: {
+    investigationDate: Date;      // 查勘日期
+    investigationLocation: string; // 查勘地点
+    presentPersons: string[];     // 在场人员
+    sceneDescription: string;     // 现场描述
+    evidencePhotos: Photo[];      // 现场照片
+    damageDescription: string;    // 损失情况描述
+  };
+
+  /** 5. 事故原因分析 */
+  causeAnalysis: {
+    directCause: string;          // 直接原因
+    indirectCause: string;        // 间接原因
+    contributingFactors: string[]; // 诱因分析
+    responsibilityAnalysis: string; // 责任分析
+    preventabilityAnalysis: string; // 可避免性分析
+  };
+
+  /** 6. 损失核定 */
+  lossAssessment: {
+    damagedItems: DamagedItem[];  // 受损项目明细
+    assessmentMethod: string;     // 核损方法
+    marketPriceAnalysis: string;  // 市场价格分析
+    depreciationCalculation: string; // 折旧计算
+    salvageValue: number;         // 残值评估
+    totalLoss: number;            // 损失总额
+    deductibleAmount: number;     // 免赔额计算
+    compensationAmount: number;   // 赔偿金额
+  };
+
+  /** 7. 公估结论 */
+  conclusion: {
+    assessmentResult: AssessmentConclusion; // 公估结论
+    recommendedCompensation: number;        // 建议赔偿金额
+    specialRecommendations: string[];       // 特别建议
+    attachments: Attachment[];              // 附件清单
+  };
+}
+
+/** 索赔项目 */
+interface ClaimedItem {
+  itemName: string;         // 项目名称
+  claimedAmount: number;    // 索赔金额
+  description: string;      // 项目描述
+}
+
+/** 受损项目 */
+interface DamagedItem {
+  itemName: string;         // 项目名称
+  originalValue: number;    // 原值
+  damageExtent: string;     // 损坏程度
+  repairCost: number;       // 修复费用
+  replacementCost: number;  // 重置价值
+  assessedLoss: number;     // 核定损失
+}
+
+/** 照片信息 */
+interface Photo {
+  fileName: string;         // 文件名
+  description: string;      // 照片说明
+  location?: string;        // 拍摄位置
+  timestamp: Date;          // 拍摄时间
+}
+
+/** 附件信息 */
+interface Attachment {
+  fileName: string;         // 文件名
+  fileType: string;         // 文件类型
+  description: string;      // 附件说明
+}
+```
+
+## 业务规则实现规范
+
+### 损失计算规则
+```typescript
+/**
+ * 损失计算业务规则
+ */
+export class LossCalculationRules {
+  /**
+   * 计算财产险损失
+   * @param item 受损项目
+   * @param policy 保单信息
+   * @returns 计算结果
+   */
+  static calculatePropertyLoss(
+    item: DamagedItem,
+    policy: PolicyInfo
+  ): LossCalculationResult {
+    // 1. 确定计算基础
+    const calculationBase = this.determineCalculationBase(item);
+    
+    // 2. 计算折旧
+    const depreciation = this.calculateDepreciation(item, policy);
+    
+    // 3. 计算实际损失
+    const actualLoss = Math.min(
+      item.repairCost || item.replacementCost,
+      calculationBase - depreciation
+    );
+    
+    // 4. 应用保险条款限制
+    const coveredLoss = this.applyCoverageLimit(actualLoss, policy);
+    
+    // 5. 扣除免赔额
+    const finalLoss = Math.max(0, coveredLoss - policy.deductible);
+    
+    return {
+      calculationBase,
+      depreciation,
+      actualLoss,
+      coveredLoss,
+      deductibleAmount: Math.min(coveredLoss, policy.deductible),
+      finalCompensation: finalLoss,
+      calculationDetails: this.generateCalculationDetails({
+        item,
+        policy,
+        calculationBase,
+        depreciation,
+        actualLoss,
+        coveredLoss,
+        finalLoss
+      })
+    };
+  }
+
+  /**
+   * 确定计算基础（重置价值/实际价值）
+   */
+  private static determineCalculationBase(item: DamagedItem): number {
+    // 根据保险条款确定使用重置价值还是实际价值
+    // 这里需要根据具体险种和条款来实现
+    return item.replacementCost || item.originalValue;
+  }
+
+  /**
+   * 计算折旧
+   */
+  private static calculateDepreciation(
+    item: DamagedItem,
+    policy: PolicyInfo
+  ): number {
+    // 根据不同的折旧方法计算
+    switch (policy.depreciationMethod) {
+      case 'straight_line':
+        return this.calculateStraightLineDepreciation(item, policy);
+      case 'accelerated':
+        return this.calculateAcceleratedDepreciation(item, policy);
+      default:
+        return 0;
+    }
+  }
+
+  /**
+   * 直线折旧法
+   */
+  private static calculateStraightLineDepreciation(
+    item: DamagedItem,
+    policy: PolicyInfo
+  ): number {
+    const usefulLife = this.getUsefulLife(item.itemName);
+    const actualAge = this.calculateAge(item);
+    const depreciationRate = actualAge / usefulLife;
+    
+    return item.originalValue * Math.min(depreciationRate, 1);
+  }
+
+  /**
+   * 应用保险责任限制
+   */
+  private static applyCoverageLimit(
+    loss: number,
+    policy: PolicyInfo
+  ): number {
+    // 应用分项限额
+    const itemLimit = policy.itemLimits?.[item.itemName];
+    if (itemLimit) {
+      loss = Math.min(loss, itemLimit);
+    }
+    
+    // 应用总保险金额限制
+    return Math.min(loss, policy.totalInsuredAmount);
+  }
+}
+
+/**
+ * 损失计算结果
+ */
+interface LossCalculationResult {
+  calculationBase: number;      // 计算基础
+  depreciation: number;         // 折旧额
+  actualLoss: number;           // 实际损失
+  coveredLoss: number;          // 保险责任内损失
+  deductibleAmount: number;     // 免赔额
+  finalCompensation: number;    // 最终赔偿金额
+  calculationDetails: string;   // 计算过程说明
+}
+```
+
+### 责任认定规则
+```typescript
+/**
+ * 保险责任认定规则
+ */
+export class CoverageAnalysisRules {
+  /**
+   * 分析保险责任
+   * @param accident 事故信息
+   * @param policy 保单信息
+   * @returns 责任分析结果
+   */
+  static analyzeCoverage(
+    accident: AccidentInfo,
+    policy: PolicyInfo
+  ): CoverageAnalysisResult {
+    const analysisSteps: AnalysisStep[] = [];
+    
+    // 1. 检查基本承保条件
+    const basicCoverage = this.checkBasicCoverage(accident, policy);
+    analysisSteps.push({
+      step: '基本承保条件检查',
+      result: basicCoverage.covered,
+      reasoning: basicCoverage.reasoning
+    });
+    
+    if (!basicCoverage.covered) {
+      return {
+        conclusion: '不属于保险责任',
+        confidence: 0.95,
+        analysisSteps,
+        reasoning: basicCoverage.reasoning
+      };
+    }
+    
+    // 2. 检查除外责任
+    const exclusionCheck = this.checkExclusions(accident, policy);
+    analysisSteps.push({
+      step: '除外责任检查',
+      result: !exclusionCheck.excluded,
+      reasoning: exclusionCheck.reasoning
+    });
+    
+    if (exclusionCheck.excluded) {
+      return {
+        conclusion: '不属于保险责任',
+        confidence: 0.9,
+        analysisSteps,
+        reasoning: exclusionCheck.reasoning
+      };
+    }
+    
+    // 3. 检查特别约定
+    const specialTermsCheck = this.checkSpecialTerms(accident, policy);
+    analysisSteps.push({
+      step: '特别约定检查',
+      result: specialTermsCheck.compliant,
+      reasoning: specialTermsCheck.reasoning
+    });
+    
+    // 4. 综合评估
+    const overallAssessment = this.performOverallAssessment(
+      accident,
+      policy,
+      analysisSteps
+    );
+    
+    return {
+      conclusion: overallAssessment.conclusion,
+      confidence: overallAssessment.confidence,
+      analysisSteps,
+      reasoning: overallAssessment.reasoning,
+      recommendations: overallAssessment.recommendations
+    };
+  }
+
+  /**
+   * 检查基本承保条件
+   */
+  private static checkBasicCoverage(
+    accident: AccidentInfo,
+    policy: PolicyInfo
+  ): { covered: boolean; reasoning: string } {
+    // 检查时间范围
+    if (!this.isWithinPolicyPeriod(accident.accidentDate, policy)) {
+      return {
+        covered: false,
+        reasoning: '事故发生时间超出保险期间范围'
+      };
+    }
+    
+    // 检查保险标的
+    if (!this.isInsuredSubject(accident.damageLocation, policy)) {
+      return {
+        covered: false,
+        reasoning: '受损标的不在保险标的范围内'
+      };
+    }
+    
+    // 检查承保风险
+    if (!this.isCoveredPeril(accident.accidentType, policy)) {
+      return {
+        covered: false,
+        reasoning: `${accident.accidentType}不在承保风险范围内`
+      };
+    }
+    
+    return {
+      covered: true,
+      reasoning: '符合基本承保条件'
+    };
+  }
+
+  /**
+   * 检查除外责任
+   */
+  private static checkExclusions(
+    accident: AccidentInfo,
+    policy: PolicyInfo
+  ): { excluded: boolean; reasoning: string } {
+    // 检查标准除外责任
+    for (const exclusion of policy.standardExclusions) {
+      if (this.matchesExclusion(accident, exclusion)) {
+        return {
+          excluded: true,
+          reasoning: `触发除外责任：${exclusion.description}`
+        };
+      }
+    }
+    
+    // 检查特别除外责任
+    for (const exclusion of policy.specialExclusions || []) {
+      if (this.matchesExclusion(accident, exclusion)) {
+        return {
+          excluded: true,
+          reasoning: `触发特别除外责任：${exclusion.description}`
+        };
+      }
+    }
+    
+    return {
+      excluded: false,
+      reasoning: '未触发任何除外责任条款'
+    };
+  }
+}
+
+/**
+ * 责任分析结果
+ */
+interface CoverageAnalysisResult {
+  conclusion: AssessmentConclusion;   // 分析结论
+  confidence: number;                 // 置信度(0-1)
+  analysisSteps: AnalysisStep[];     // 分析步骤
+  reasoning: string;                  // 主要理由
+  recommendations?: string[];         // 建议事项
+}
+
+interface AnalysisStep {
+  step: string;           // 分析步骤
+  result: boolean;        // 步骤结果
+  reasoning: string;      // 分析理由
+}
+```
+
+### 文档生成规则
+```typescript
+/**
+ * 报告文档生成规则
+ */
+export class ReportGenerationRules {
+  /**
+   * 生成标准公估报告
+   * @param reportData 报告数据
+   * @returns 生成的报告内容
+   */
+  static generateStandardReport(
+    reportData: StandardReportStructure
+  ): GeneratedReport {
+    const sections: ReportSection[] = [];
+    
+    // 1. 生成报告头部
+    sections.push(this.generateReportHeader(reportData.basicInfo));
+    
+    // 2. 生成各章节内容
+    sections.push(this.generateAccidentDetailsSection(reportData.accidentDetails));
+    sections.push(this.generatePolicySummarySection(reportData.policySummary));
+    sections.push(this.generateSiteInvestigationSection(reportData.siteInvestigation));
+    sections.push(this.generateCauseAnalysisSection(reportData.causeAnalysis));
+    sections.push(this.generateLossAssessmentSection(reportData.lossAssessment));
+    sections.push(this.generateConclusionSection(reportData.conclusion));
+    
+    // 3. 生成附件清单
+    sections.push(this.generateAttachmentsSection(reportData.conclusion.attachments));
+    
+    return {
+      sections,
+      metadata: {
+        generatedAt: new Date(),
+        reportVersion: '1.0',
+        pageCount: this.calculatePageCount(sections),
+        wordCount: this.calculateWordCount(sections)
+      }
+    };
+  }
+
+  /**
+   * 生成损失核定章节
+   */
+  private static generateLossAssessmentSection(
+    lossData: StandardReportStructure['lossAssessment']
+  ): ReportSection {
+    let content = '## 五、损失核定\n\n';
+    
+    // 5.1 受损项目明细
+    content += '### 5.1 受损项目明细\n\n';
+    content += this.generateDamageItemsTable(lossData.damagedItems);
+    
+    // 5.2 核损方法说明
+    content += '### 5.2 核损方法\n\n';
+    content += `${lossData.assessmentMethod}\n\n`;
+    
+    // 5.3 市场价格分析
+    if (lossData.marketPriceAnalysis) {
+      content += '### 5.3 市场价格分析\n\n';
+      content += `${lossData.marketPriceAnalysis}\n\n`;
+    }
+    
+    // 5.4 折旧计算
+    if (lossData.depreciationCalculation) {
+      content += '### 5.4 折旧计算\n\n';
+      content += `${lossData.depreciationCalculation}\n\n`;
+    }
+    
+    // 5.5 损失汇总
+    content += '### 5.5 损失汇总\n\n';
+    content += this.generateLossSummaryTable({
+      totalLoss: lossData.totalLoss,
+      salvageValue: lossData.salvageValue,
+      deductibleAmount: lossData.deductibleAmount,
+      compensationAmount: lossData.compensationAmount
+    });
+    
+    return {
+      title: '损失核定',
+      content,
+      sectionType: 'loss_assessment'
+    };
+  }
+
+  /**
+   * 生成受损项目表格
+   */
+  private static generateDamageItemsTable(items: DamagedItem[]): string {
+    let table = '| 序号 | 项目名称 | 原值(元) | 损坏程度 | 修复费用(元) | 重置价值(元) | 核定损失(元) |\n';
+    table += '|------|----------|----------|----------|--------------|--------------|-------------|\n';
+    
+    items.forEach((item, index) => {
+      table += `| ${index + 1} | ${item.itemName} | ${this.formatCurrency(item.originalValue)} | ${item.damageExtent} | ${this.formatCurrency(item.repairCost)} | ${this.formatCurrency(item.replacementCost)} | ${this.formatCurrency(item.assessedLoss)} |\n`;
+    });
+    
+    table += '\n';
+    return table;
+  }
+
+  /**
+   * 生成损失汇总表格
+   */
+  private static generateLossSummaryTable(summary: {
+    totalLoss: number;
+    salvageValue: number;
+    deductibleAmount: number;
+    compensationAmount: number;
+  }): string {
+    return `
+| 项目 | 金额(元) |
+|------|----------|
+| 损失总额 | ${this.formatCurrency(summary.totalLoss)} |
+| 残值 | ${this.formatCurrency(summary.salvageValue)} |
+| 免赔额 | ${this.formatCurrency(summary.deductibleAmount)} |
+| **建议赔偿金额** | **${this.formatCurrency(summary.compensationAmount)}** |
+
+`;
+  }
+
+  /**
+   * 格式化货币金额
+   */
+  private static formatCurrency(amount: number): string {
+    return new Intl.NumberFormat('zh-CN', {
+      style: 'currency',
+      currency: 'CNY',
+      minimumFractionDigits: 2
+    }).format(amount).replace('¥', '');
+  }
+}
+
+/**
+ * 生成的报告结构
+ */
+interface GeneratedReport {
+  sections: ReportSection[];
+  metadata: {
+    generatedAt: Date;
+    reportVersion: string;
+    pageCount: number;
+    wordCount: number;
+  };
+}
+
+interface ReportSection {
+  title: string;
+  content: string;
+  sectionType: string;
+}
+```
+
+## 数据验证规则
+
+### 业务数据验证
+```typescript
+/**
+ * 保险业务数据验证规则
+ */
+export class InsuranceDataValidation {
+  /**
+   * 验证保单信息
+   */
+  static validatePolicy(policy: PolicyInfo): ValidationResult {
+    const errors: string[] = [];
+    
+    // 验证保单号格式
+    if (!this.validatePolicyNumber(policy.policyNumber)) {
+      errors.push('保单号格式不正确');
+    }
+    
+    // 验证保险期间
+    if (policy.startDate >= policy.endDate) {
+      errors.push('保险起期不能晚于保险止期');
+    }
+    
+    // 验证保险金额
+    if (policy.insuredAmount <= 0) {
+      errors.push('保险金额必须大于0');
+    }
+    
+    // 验证免赔额
+    if (policy.deductible < 0 || policy.deductible > policy.insuredAmount) {
+      errors.push('免赔额设置不合理');
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  }
+
+  /**
+   * 验证损失金额合理性
+   */
+  static validateLossAmount(
+    claimedAmount: number,
+    assessedLoss: number,
+    insuredAmount: number
+  ): ValidationResult {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    
+    // 检查损失金额不能为负
+    if (assessedLoss < 0) {
+      errors.push('核定损失金额不能为负数');
+    }
+    
+    // 检查损失金额不能超过保险金额
+    if (assessedLoss > insuredAmount) {
+      errors.push('核定损失金额不能超过保险金额');
+    }
+    
+    // 检查损失金额与索赔金额的差异
+    const difference = Math.abs(claimedAmount - assessedLoss);
+    const ratio = difference / claimedAmount;
+    
+    if (ratio > 0.3) {
+      warnings.push('核定损失与索赔金额差异较大，请核实');
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors,
+      warnings
+    };
+  }
+
+  /**
+   * 验证保单号格式
+   */
+  private static validatePolicyNumber(policyNumber: string): boolean {
+    // 常见保单号格式：字母+数字组合，长度8-20位
+    const policyNumberRegex = /^[A-Z]{2,4}\d{8,16}$/;
+    return policyNumberRegex.test(policyNumber);
+  }
+}
+
+interface ValidationResult {
+  isValid: boolean;
+  errors: string[];
+  warnings?: string[];
+}
+```
+
+## AI提示词模板
+
+### 章节生成提示词
+```typescript
+/**
+ * AI章节内容生成提示词模板
+ */
+export const ChapterPromptTemplates = {
+  /** 事故经过及索赔情况 */
+  accident_details: `
+请根据以下信息撰写公估报告中的"事故经过及索赔情况"章节：
+
+## 基础信息
+- 事故类型：{accidentType}
+- 发生时间：{accidentDate}
+- 发生地点：{accidentLocation}
+- 天气情况：{weatherCondition}
+
+## 事故经过
+{accidentDescription}
+
+## 索赔信息
+- 报案时间：{reportTime}
+- 索赔金额：{claimedAmount}
+- 主要索赔项目：{claimedItems}
+
+## 撰写要求
+1. 使用客观、准确的语言描述事故经过
+2. 按时间顺序梳理事故发展过程
+3. 突出关键事实和证据
+4. 避免主观推测和评价
+5. 语言简洁明了，逻辑清晰
+6. 字数控制在500-800字之间
+
+请按照公估报告的专业标准撰写该章节内容。
+`,
+
+  /** 现场查勘情况 */
+  site_investigation: `
+请根据以下查勘信息撰写公估报告中的"现场查勘情况"章节：
+
+## 查勘基本信息
+- 查勘时间：{investigationDate}
+- 查勘地点：{investigationLocation}
+- 查勘人员：{investigators}
+- 在场人员：{presentPersons}
+
+## 现场情况
+{sceneDescription}
+
+## 损失情况
+{damageDescription}
+
+## 现场照片
+{photoDescriptions}
+
+## 撰写要求
+1. 详细描述现场查勘的时间、地点、人员
+2. 客观记录现场状况和损失情况
+3. 重点描述与事故相关的关键证据
+4. 对现场照片进行说明
+5. 使用专业术语，语言准确
+6. 结构清晰，层次分明
+7. 字数控制在600-1000字之间
+
+请按照保险公估的专业标准撰写该章节内容。
+`,
+
+  /** 事故原因分析 */
+  cause_analysis: `
+请根据以下信息撰写公估报告中的"事故原因分析"章节：
+
+## 事故基本情况
+- 事故类型：{accidentType}
+- 损失性质：{lossNature}
+- 现场证据：{evidences}
+
+## 相关信息
+{contextInformation}
+
+## 分析要求
+1. 从直接原因和间接原因两个层面分析
+2. 分析是否存在人为因素
+3. 评估事故的可预见性和可避免性
+4. 考虑环境因素的影响
+5. 参考相关技术标准和规范
+
+## 撰写要求
+1. 逻辑严密，分析客观
+2. 引用相关法规和标准
+3. 区分事实和推论
+4. 避免绝对化表述
+5. 结论明确，理由充分
+6. 语言专业，条理清晰
+7. 字数控制在400-600字之间
+
+请按照专业的事故分析方法撰写该章节内容。
+`,
+
+  /** 损失核定 */
+  loss_assessment: `
+请根据以下信息撰写公估报告中的"损失核定"章节：
+
+## 受损项目信息
+{damagedItems}
+
+## 市场价格信息
+{marketPrices}
+
+## 保险条款相关信息
+- 计价方式：{valuationMethod}
+- 免赔额：{deductible}
+- 赔偿限额：{compensationLimit}
+
+## 核定要求
+1. 详细列明受损项目清单
+2. 说明核定方法和标准
+3. 提供市场价格依据
+4. 计算折旧（如适用）
+5. 考虑残值回收
+6. 应用保险条款限制
+
+## 撰写要求
+1. 数据准确，计算无误
+2. 方法科学，依据充分
+3. 表格清晰，便于理解
+4. 说明详细，逻辑合理
+5. 符合保险条款约定
+6. 语言专业，格式规范
+7. 包含必要的计算过程说明
+
+请按照保险核损的专业标准撰写该章节内容。
+`
+};
+```
+
+这个保险领域规范文件提供了完整的业务域指导，包括术语标准化、业务规则实现、文档生成、数据验证和AI提示词模板等，确保项目能够准确处理保险公估业务的专业需求。

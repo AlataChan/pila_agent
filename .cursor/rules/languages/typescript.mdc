@@ -1,0 +1,592 @@
+---
+description: 
+globs: *.json,*.ts,*tsx
+alwaysApply: false
+---
+# TypeScript 开发规范
+
+## 类型系统基础规范
+
+### 严格模式配置
+```json
+// tsconfig.json
+{
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true
+  }
+}
+```
+
+### 类型定义规范
+```typescript
+// 优先使用interface而不是type（除非需要联合类型）
+interface User {
+  readonly id: number;
+  username: string;
+  email: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt?: Date; // 可选属性使用?
+}
+
+// 联合类型使用type
+type ReportStatus = 'draft' | 'review' | 'completed' | 'archived';
+type InsuranceType = '企业财产险' | '车险' | '责任险' | '其他';
+
+// 泛型约束
+interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  message?: string;
+  errorCode?: string;
+}
+
+// 工具类型的使用
+type CreateUserRequest = Omit<User, 'id' | 'createdAt' | 'updatedAt'>;
+type UpdateUserRequest = Partial<Pick<User, 'username' | 'email'>>;
+```
+
+## 业务领域类型定义
+
+### 核心业务类型
+```typescript
+/**
+ * 报告相关类型定义
+ */
+export namespace Report {
+  /** 报告基础信息 */
+  export interface BaseInfo {
+    id: number;
+    title: string;
+    insuranceType: InsuranceType;
+    status: ReportStatus;
+    createdAt: Date;
+    updatedAt: Date;
+    userId: number;
+  }
+
+  /** 报告内容章节 */
+  export interface Content {
+    /** 事故经过及索赔 */
+    accidentDetails?: string;
+    /** 保单内容摘要 */
+    policySummary?: string;
+    /** 现场查勘情况 */
+    siteInvestigation?: string;
+    /** 事故原因分析 */
+    causeAnalysis?: string;
+    /** 损失核定 */
+    lossAssessment?: string;
+    /** 公估结论 */
+    conclusion?: string;
+  }
+
+  /** 完整报告数据 */
+  export interface Full extends BaseInfo {
+    content: Content;
+    associatedFiles: UploadedFile.Info[];
+  }
+
+  /** 创建报告请求 */
+  export interface CreateRequest {
+    title: string;
+    insuranceType?: InsuranceType;
+  }
+
+  /** 更新报告请求 */
+  export interface UpdateRequest {
+    title?: string;
+    insuranceType?: InsuranceType;
+    content?: Partial<Content>;
+  }
+}
+
+/**
+ * 文件上传相关类型
+ */
+export namespace UploadedFile {
+  export interface Info {
+    id: number;
+    fileName: string;
+    fileType: string;
+    fileSizeBytes: number;
+    ocrStatus: OCRStatus;
+    ocrResultText?: string;
+    uploadedAt: Date;
+    reportId?: number;
+  }
+
+  export type OCRStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
+  export interface UploadResponse extends Info {
+    uploadUrl?: string;
+  }
+}
+
+/**
+ * AI服务相关类型
+ */
+export namespace AI {
+  export type ChapterType = 
+    | 'accident_details'
+    | 'policy_summary'
+    | 'site_investigation'
+    | 'cause_analysis'
+    | 'loss_assessment';
+
+  export interface GenerationRequest {
+    chapterKey: ChapterType;
+    contextText: string;
+    options?: {
+      temperature?: number;
+      maxTokens?: number;
+      customPrompt?: string;
+    };
+  }
+
+  export interface GenerationResponse {
+    success: boolean;
+    content: string;
+    tokensUsed: number;
+    generationTime: number;
+    model: string;
+  }
+
+  export interface GenerationError {
+    error: string;
+    code: string;
+    retryable: boolean;
+  }
+}
+```
+
+### React组件类型规范
+```typescript
+import React, { ReactNode, HTMLAttributes } from 'react';
+
+/**
+ * 组件Props基础接口
+ */
+interface BaseComponentProps {
+  className?: string;
+  children?: ReactNode;
+  testId?: string;
+}
+
+/**
+ * 报告编辑器组件Props
+ */
+interface ReportEditorProps extends BaseComponentProps {
+  reportId: string;
+  initialContent?: Report.Content;
+  readonly?: boolean;
+  onSave: (content: Report.Content) => Promise<void>;
+  onError?: (error: Error) => void;
+  onAIGenerate?: (request: AI.GenerationRequest) => Promise<AI.GenerationResponse>;
+}
+
+/**
+ * 文件上传组件Props
+ */
+interface FileUploadProps extends BaseComponentProps {
+  accept: string[];
+  maxSize: number;
+  multiple?: boolean;
+  reportId?: number;
+  onUploadStart?: (files: File[]) => void;
+  onUploadProgress?: (progress: number) => void;
+  onUploadComplete?: (files: UploadedFile.Info[]) => void;
+  onUploadError?: (error: Error) => void;
+}
+
+/**
+ * 高阶组件类型
+ */
+type WithAuthProps = {
+  user: User;
+  isAuthenticated: boolean;
+};
+
+function withAuth<P extends WithAuthProps>(
+  Component: React.ComponentType<P>
+): React.ComponentType<Omit<P, keyof WithAuthProps>> {
+  return (props: Omit<P, keyof WithAuthProps>) => {
+    // HOC实现
+    return null;
+  };
+}
+
+/**
+ * Hook返回值类型
+ */
+interface UseReportEditorReturn {
+  content: Report.Content;
+  isDirty: boolean;
+  isSaving: boolean;
+  updateContent: (chapter: keyof Report.Content, value: string) => void;
+  saveContent: () => Promise<void>;
+  generateChapter: (chapterType: AI.ChapterType, context: string) => Promise<void>;
+  error: Error | null;
+  clearError: () => void;
+}
+
+/**
+ * API客户端类型
+ */
+interface ApiClient {
+  get<T>(url: string, config?: RequestConfig): Promise<ApiResponse<T>>;
+  post<T, D = any>(url: string, data?: D, config?: RequestConfig): Promise<ApiResponse<T>>;
+  put<T, D = any>(url: string, data?: D, config?: RequestConfig): Promise<ApiResponse<T>>;
+  delete<T>(url: string, config?: RequestConfig): Promise<ApiResponse<T>>;
+}
+
+interface RequestConfig {
+  headers?: Record<string, string>;
+  timeout?: number;
+  signal?: AbortSignal;
+}
+
+/**
+ * 状态管理类型（如果使用Redux Toolkit）
+ */
+export namespace Store {
+  export interface RootState {
+    auth: AuthState;
+    reports: ReportsState;
+    files: FilesState;
+    ui: UIState;
+  }
+
+  export interface AuthState {
+    user: User | null;
+    token: string | null;
+    isLoading: boolean;
+    error: string | null;
+  }
+
+  export interface ReportsState {
+    items: Report.BaseInfo[];
+    currentReport: Report.Full | null;
+    isLoading: boolean;
+    error: string | null;
+    pagination: {
+      page: number;
+      perPage: number;
+      total: number;
+    };
+  }
+
+  export interface FilesState {
+    uploadProgress: Record<string, number>;
+    processingFiles: UploadedFile.Info[];
+    error: string | null;
+  }
+
+  export interface UIState {
+    theme: 'light' | 'dark';
+    sidebarOpen: boolean;
+    notifications: Notification[];
+  }
+
+  export interface Notification {
+    id: string;
+    type: 'success' | 'error' | 'warning' | 'info';
+    title: string;
+    message: string;
+    duration?: number;
+  }
+}
+```
+
+## 类型安全最佳实践
+
+### 类型守卫和类型断言
+```typescript
+// 类型守卫
+function isReportFull(report: Report.BaseInfo | Report.Full): report is Report.Full {
+  return 'content' in report && 'associatedFiles' in report;
+}
+
+function isValidChapterType(value: string): value is AI.ChapterType {
+  const validTypes: AI.ChapterType[] = [
+    'accident_details',
+    'policy_summary', 
+    'site_investigation',
+    'cause_analysis',
+    'loss_assessment'
+  ];
+  return validTypes.includes(value as AI.ChapterType);
+}
+
+// 使用类型守卫
+function processReport(report: Report.BaseInfo | Report.Full) {
+  if (isReportFull(report)) {
+    // TypeScript知道这里report是Report.Full类型
+    console.log(report.content.accidentDetails);
+    console.log(report.associatedFiles.length);
+  }
+}
+
+// 类型断言（谨慎使用）
+const apiResponse = response as ApiResponse<Report.Full>;
+
+// 更安全的类型断言
+function assertIsReportFull(report: unknown): asserts report is Report.Full {
+  if (
+    typeof report === 'object' &&
+    report !== null &&
+    'id' in report &&
+    'content' in report &&
+    'associatedFiles' in report
+  ) {
+    return;
+  }
+  throw new Error('Invalid report format');
+}
+```
+
+### 错误处理类型
+```typescript
+/**
+ * 结果类型（类似Rust的Result）
+ */
+type Result<T, E = Error> = 
+  | { success: true; data: T }
+  | { success: false; error: E };
+
+/**
+ * 异步操作封装
+ */
+async function safeApiCall<T>(
+  apiCall: () => Promise<T>
+): Promise<Result<T, ApiError>> {
+  try {
+    const data = await apiCall();
+    return { success: true, data };
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof ApiError ? error : new ApiError('Unknown error')
+    };
+  }
+}
+
+/**
+ * API错误类型
+ */
+class ApiError extends Error {
+  constructor(
+    message: string,
+    public statusCode?: number,
+    public errorCode?: string
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+/**
+ * 使用示例
+ */
+async function createReport(data: Report.CreateRequest): Promise<Result<Report.Full>> {
+  return safeApiCall(() => apiClient.post<Report.Full>('/api/v1/reports', data));
+}
+
+// 使用
+const result = await createReport({ title: '新报告' });
+if (result.success) {
+  console.log(result.data.id); // TypeScript知道data存在且是Report.Full类型
+} else {
+  console.error(result.error.message); // TypeScript知道error存在且是ApiError类型
+}
+```
+
+### 工具类型的高级使用
+```typescript
+/**
+ * 深度只读类型
+ */
+type DeepReadonly<T> = {
+  readonly [P in keyof T]: T[P] extends object ? DeepReadonly<T[P]> : T[P];
+};
+
+/**
+ * 可选属性变必需
+ */
+type RequiredBy<T, K extends keyof T> = T & Required<Pick<T, K>>;
+
+/**
+ * 递归部分类型
+ */
+type DeepPartial<T> = {
+  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
+};
+
+/**
+ * 字符串键类型
+ */
+type StringKeys<T> = Extract<keyof T, string>;
+
+/**
+ * 业务应用示例
+ */
+type ReadonlyReport = DeepReadonly<Report.Full>;
+type ReportWithRequiredTitle = RequiredBy<Report.CreateRequest, 'title'>;
+type PartialReportContent = DeepPartial<Report.Content>;
+
+/**
+ * 条件类型示例
+ */
+type NonNullable<T> = T extends null | undefined ? never : T;
+type ApiResponseData<T> = T extends ApiResponse<infer U> ? U : never;
+
+/**
+ * 映射类型示例
+ */
+type OptionalExceptId<T> = {
+  id: T extends { id: infer U } ? U : never;
+} & {
+  [K in keyof Omit<T, 'id'>]?: T[K];
+};
+```
+
+## 模块声明和环境类型
+
+### 环境变量类型声明
+```typescript
+// types/env.d.ts
+declare namespace NodeJS {
+  interface ProcessEnv {
+    readonly NODE_ENV: 'development' | 'production' | 'test';
+    readonly NEXT_PUBLIC_API_URL: string;
+    readonly NEXT_PUBLIC_APP_NAME: string;
+    readonly DATABASE_URL: string;
+    readonly JWT_SECRET: string;
+    readonly OPENAI_API_KEY: string;
+    readonly REDIS_URL: string;
+  }
+}
+```
+
+### 第三方库类型扩展
+```typescript
+// types/tiptap.d.ts
+declare module '@tiptap/react' {
+  export interface Commands<ReturnType = any> {
+    insertAIContent: {
+      insertAIContent: (content: string) => ReturnType;
+    };
+  }
+}
+
+// 全局类型扩展
+declare global {
+  interface Window {
+    gtag?: (
+      command: 'config' | 'event',
+      targetId: string,
+      config?: Record<string, any>
+    ) => void;
+  }
+
+  namespace JSX {
+    interface IntrinsicElements {
+      'custom-element': React.DetailedHTMLProps<
+        React.HTMLAttributes<HTMLElement>,
+        HTMLElement
+      >;
+    }
+  }
+}
+```
+
+## 类型测试和验证
+
+### 编译时类型测试
+```typescript
+// types/tests.ts
+/**
+ * 编译时类型测试，确保类型定义正确
+ */
+
+// 测试类型兼容性
+type AssertExtends<T, U> = T extends U ? true : false;
+type AssertEqual<T, U> = (<V>() => V extends T ? 1 : 2) extends <V>() => V extends U ? 1 : 2
+  ? true
+  : false;
+
+// 测试用例
+const testReportTypeCompatibility: AssertExtends<Report.CreateRequest, object> = true;
+const testApiResponseType: AssertEqual<ApiResponse<string>, { success: boolean; data: string; message?: string; errorCode?: string }> = true;
+
+// 测试工具函数
+function expectType<T>(value: T): T {
+  return value;
+}
+
+// 使用示例
+const user: User = {
+  id: 1,
+  username: 'test',
+  email: 'test@example.com',
+  isActive: true,
+  createdAt: new Date()
+};
+
+expectType<User>(user); // 编译时验证类型正确
+
+/**
+ * 运行时类型验证（使用zod等库）
+ */
+import { z } from 'zod';
+
+const ReportCreateSchema = z.object({
+  title: z.string().min(1).max(255),
+  insuranceType: z.enum(['企业财产险', '车险', '责任险', '其他']).optional()
+});
+
+type ReportCreateValidated = z.infer<typeof ReportCreateSchema>;
+
+// 确保Zod模式和TypeScript类型一致
+const _typeCheck: AssertEqual<ReportCreateValidated, Report.CreateRequest> = true;
+```
+
+## 性能相关类型优化
+
+### 惰性类型加载
+```typescript
+// 使用动态导入进行代码分割
+type LazyComponent<T> = React.LazyExoticComponent<React.ComponentType<T>>;
+
+const LazyReportEditor: LazyComponent<ReportEditorProps> = React.lazy(
+  () => import('../components/ReportEditor')
+);
+
+// 条件类型优化
+type OptimizedUnion<T> = T extends string
+  ? string
+  : T extends number
+  ? number
+  : T extends boolean
+  ? boolean
+  : T;
+
+// 避免深层递归类型
+type SafeDeepPartial<T, Depth extends number = 3> = Depth extends 0
+  ? T
+  : {
+      [P in keyof T]?: T[P] extends object
+        ? SafeDeepPartial<T[P], Prev<Depth>>
+        : T[P];
+    };
+
+type Prev<T extends number> = [-1, 0, 1, 2, 3, 4, 5][T];
+```
+
+这个TypeScript规范文件涵盖了类型系统的各个方面，包括基础类型定义、业务领域类型、React组件类型、高级类型技巧、模块声明和性能优化等，确保项目中的TypeScript代码具有良好的类型安全性和可维护性。

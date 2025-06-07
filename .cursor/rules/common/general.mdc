@@ -1,0 +1,114 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# 通用开发规范
+
+## 项目概述
+公估报告智能撰写助手 - 通过AI技术帮助公估师快速生成高质量的报告初稿
+
+## 代码质量标准
+- 所有公共函数必须包含完整的文档注释（JSDoc/Docstring）
+- 单个文件不超过500行代码
+- 函数复杂度不超过10（圈复杂度）
+- 测试覆盖率不低于80%
+- 禁止使用console.log进行生产环境调试，使用统一的日志系统
+
+## 命名规范
+### 文件命名
+- 使用kebab-case: `user-service.py`, `report-editor.tsx`
+- 组件文件使用PascalCase: `ReportEditor.tsx`, `FileUpload.tsx`
+- 配置文件使用小写加下划线: `database_config.py`, `api_settings.py`
+
+### 代码命名
+- 类名使用PascalCase: `ReportGenerator`, `UserService`, `OCRProcessor`
+- 变量和函数使用camelCase: `generateReport()`, `userId`, `fileUploadStatus`
+- 常量使用SCREAMING_SNAKE_CASE: `MAX_FILE_SIZE`, `API_ENDPOINTS`, `OCR_TIMEOUT`
+- 私有方法前缀下划线: `_validate_input()`, `_process_ocr_result()`
+
+## 项目目录结构规范
+```
+backend/
+├── app/
+│   ├── api/              # API路由层
+│   │   ├── v1/          # API版本控制
+│   │   ├── auth/        # 认证相关接口
+│   │   ├── files/       # 文件管理接口
+│   │   └── reports/     # 报告管理接口
+│   ├── core/            # 核心业务逻辑
+│   │   ├── ai/          # AI服务
+│   │   ├── ocr/         # OCR处理
+│   │   └── report/      # 报告生成
+│   ├── db/              # 数据库相关
+│   │   ├── models/      # 数据模型
+│   │   ├── migrations/  # 数据库迁移
+│   │   └── schemas/     # Pydantic模式
+│   ├── services/        # 服务层
+│   └── utils/           # 工具函数
+└── tests/               # 测试文件
+
+frontend/
+├── components/          # React组件
+│   ├── common/         # 通用组件
+│   ├── auth/           # 认证组件
+│   ├── file/           # 文件操作组件
+│   └── report/         # 报告相关组件
+├── pages/              # Next.js页面
+├── hooks/              # 自定义Hooks
+├── services/           # API服务
+├── types/              # TypeScript类型定义
+├── utils/              # 工具函数
+└── styles/             # 样式文件
+```
+
+## 错误处理标准
+### 后端错误处理
+- 使用自定义异常类继承标准异常
+- 统一的错误响应格式
+- 记录详细的错误日志
+- 敏感信息不能暴露给客户端
+
+### 前端错误处理
+- 使用try-catch包装所有API调用
+- 实现全局错误边界（Error Boundary）
+- 用户友好的错误提示信息
+- 错误状态的UI反馈
+
+## 安全规范
+- 永远不要在代码中硬编码密钥、密码、API密钥
+- 使用环境变量管理敏感配置
+- 输入验证：验证所有用户输入
+- 输出编码：防止XSS攻击
+- SQL注入防护：使用参数化查询
+- 文件上传安全：验证文件类型和大小
+
+## 性能要求
+- API响应时间 < 2秒（OCR和AI生成除外）
+- 数据库查询优化，避免N+1问题
+- 前端组件懒加载
+- 图片和文件压缩
+- 合理使用缓存策略
+
+## 注释和文档规范
+### 代码注释
+- 复杂业务逻辑必须添加注释说明
+- TODO/FIXME注释必须包含责任人和截止时间
+- 注释应该解释"为什么"而不是"是什么"
+
+### 文档要求
+- API接口必须有完整的OpenAPI文档
+- 复杂算法需要单独的设计文档
+- 部署和运维文档及时更新
+
+## 版本控制规范
+- 每个提交都应该是原子性的
+- 提交信息必须清晰描述改动内容
+- 禁止提交调试代码和临时文件
+- 敏感信息和配置文件不得提交到版本库
+
+## 代码审查要求
+- 所有代码变更必须经过Code Review
+- 审查者需要检查代码规范、安全性、性能
+- 关键功能必须包含单元测试
+- 审查通过后才能合并到主分支

@@ -1,0 +1,832 @@
+---
+description: when develop api related documents
+globs: 
+alwaysApply: false
+---
+# RESTful API设计规范
+
+## 基础设计原则
+
+### URL设计规范
+```
+# 资源命名使用复数名词
+GET    /api/v1/reports           # 获取报告列表
+POST   /api/v1/reports           # 创建新报告
+GET    /api/v1/reports/{id}      # 获取特定报告
+PUT    /api/v1/reports/{id}      # 更新特定报告
+DELETE /api/v1/reports/{id}      # 删除特定报告
+
+# 嵌套资源关系
+GET    /api/v1/reports/{id}/files         # 获取报告的文件列表
+POST   /api/v1/reports/{id}/files         # 为报告上传文件
+GET    /api/v1/reports/{id}/chapters      # 获取报告章节
+POST   /api/v1/reports/{id}/ai-generate   # 生成报告AI内容
+
+# 操作性动作使用动词
+POST   /api/v1/reports/{id}/publish       # 发布报告
+POST   /api/v1/reports/{id}/archive       # 归档报告
+POST   /api/v1/files/{id}/ocr             # OCR识别
+POST   /api/v1/auth/login                 # 用户登录
+POST   /api/v1/auth/refresh               # 刷新token
+```
+
+### HTTP状态码标准
+```typescript
+/**
+ * HTTP状态码使用规范
+ */
+export enum HttpStatusCode {
+  // 2xx 成功状态
+  OK = 200,                    // 请求成功
+  CREATED = 201,              // 资源创建成功
+  ACCEPTED = 202,             // 请求已接受，处理中
+  NO_CONTENT = 204,           // 请求成功，无返回内容
+
+  // 3xx 重定向
+  NOT_MODIFIED = 304,         // 资源未修改
+
+  // 4xx 客户端错误
+  BAD_REQUEST = 400,          // 请求参数错误
+  UNAUTHORIZED = 401,         // 未认证
+  FORBIDDEN = 403,            // 权限不足
+  NOT_FOUND = 404,            // 资源不存在
+  METHOD_NOT_ALLOWED = 405,   // 方法不允许
+  CONFLICT = 409,             // 资源冲突
+  UNPROCESSABLE_ENTITY = 422, // 参数验证失败
+  TOO_MANY_REQUESTS = 429,    // 请求过于频繁
+
+  // 5xx 服务器错误
+  INTERNAL_SERVER_ERROR = 500, // 服务器内部错误
+  BAD_GATEWAY = 502,          // 网关错误
+  SERVICE_UNAVAILABLE = 503,  // 服务不可用
+}
+```
+
+### 统一响应格式
+```typescript
+/**
+ * API统一响应格式
+ */
+interface ApiResponse<T = any> {
+  /** 响应状态 */
+  success: boolean;
+  
+  /** 响应数据 */
+  data?: T;
+  
+  /** 错误信息 */
+  error?: {
+    code: string;
+    message: string;
+    details?: any;
+  };
+  
+  /** 分页信息（列表接口） */
+  pagination?: {
+    page: number;
+    perPage: number;
+    total: number;
+    totalPages: number;
+  };
+  
+  /** 请求追踪ID */
+  requestId: string;
+  
+  /** 响应时间戳 */
+  timestamp: number;
+}
+
+/**
+ * 成功响应示例
+ */
+const successResponse: ApiResponse<Report[]> = {
+  success: true,
+  data: [
+    {
+      id: 1,
+      title: "某公司火灾损失评估报告",
+      status: "completed"
+    }
+  ],
+  pagination: {
+    page: 1,
+    perPage: 20,
+    total: 156,
+    totalPages: 8
+  },
+  requestId: "req_1234567890",
+  timestamp: 1703721600000
+};
+
+/**
+ * 错误响应示例
+ */
+const errorResponse: ApiResponse = {
+  success: false,
+  error: {
+    code: "VALIDATION_ERROR",
+    message: "请求参数验证失败",
+    details: {
+      title: ["报告标题不能为空"],
+      insuranceType: ["险种类型必须是有效值"]
+    }
+  },
+  requestId: "req_1234567891",
+  timestamp: 1703721600000
+};
+```
+
+## 端点设计规范
+
+### 报告管理API
+```typescript
+/**
+ * 报告管理相关API端点
+ */
+
+/**
+ * 获取报告列表
+ * GET /api/v1/reports
+ */
+interface GetReportsParams {
+  page?: number;          // 页码，默认1
+  perPage?: number;       // 每页数量，默认20，最大100
+  status?: ReportStatus;  // 报告状态筛选
+  insuranceType?: string; // 险种筛选
+  search?: string;        // 关键词搜索
+  sortBy?: 'createdAt' | 'updatedAt' | 'title'; // 排序字段
+  sortOrder?: 'asc' | 'desc'; // 排序方向
+  userId?: number;        // 用户ID筛选（管理员权限）
+  startDate?: string;     // 创建时间范围开始（ISO 8601）
+  endDate?: string;       // 创建时间范围结束（ISO 8601）
+}
+
+interface GetReportsResponse {
+  success: true;
+  data: Report.BaseInfo[];
+  pagination: PaginationInfo;
+}
+
+/**
+ * 创建报告
+ * POST /api/v1/reports
+ */
+interface CreateReportRequest {
+  title: string;                    // 报告标题，必填，1-255字符
+  insuranceType?: InsuranceType;    // 险种类型，可选
+  description?: string;             // 报告描述，可选，最大1000字符
+}
+
+interface CreateReportResponse {
+  success: true;
+  data: Report.Full;
+}
+
+/**
+ * 获取报告详情
+ * GET /api/v1/reports/{id}
+ */
+interface GetReportResponse {
+  success: true;
+  data: Report.Full;
+}
+
+/**
+ * 更新报告
+ * PUT /api/v1/reports/{id}
+ */
+interface UpdateReportRequest {
+  title?: string;
+  insuranceType?: InsuranceType;
+  content?: Partial<Report.Content>;
+  status?: ReportStatus;
+}
+
+interface UpdateReportResponse {
+  success: true;
+  data: Report.Full;
+}
+
+/**
+ * 生成报告章节
+ * POST /api/v1/reports/{id}/ai-generate
+ */
+interface GenerateChapterRequest {
+  chapterType: AI.ChapterType;      // 章节类型
+  contextText: string;              // 上下文信息
+  options?: {
+    temperature?: number;           // AI生成温度，0-1
+    maxTokens?: number;            // 最大token数
+    customPrompt?: string;         // 自定义提示词
+  };
+}
+
+interface GenerateChapterResponse {
+  success: true;
+  data: {
+    content: string;               // 生成的内容
+    tokensUsed: number;           // 使用的token数
+    generationTime: number;       // 生成耗时（毫秒）
+    model: string;                // 使用的模型
+  };
+}
+
+/**
+ * 导出报告
+ * POST /api/v1/reports/{id}/export
+ */
+interface ExportReportRequest {
+  format: 'docx' | 'pdf';          // 导出格式
+  template?: string;               // 模板名称，可选
+  options?: {
+    includeImages?: boolean;       // 是否包含图片
+    watermark?: string;           // 水印文字
+  };
+}
+
+interface ExportReportResponse {
+  success: true;
+  data: {
+    downloadUrl: string;          // 下载链接
+    fileName: string;             // 文件名
+    fileSize: number;             // 文件大小（字节）
+    expiresAt: string;           // 链接过期时间
+  };
+}
+```
+
+### 文件管理API
+```typescript
+/**
+ * 文件管理相关API端点
+ */
+
+/**
+ * 上传文件
+ * POST /api/v1/files/upload
+ * Content-Type: multipart/form-data
+ */
+interface UploadFileRequest {
+  file: File;                      // 文件内容
+  reportId?: number;               // 关联的报告ID，可选
+  category?: 'evidence' | 'attachment' | 'template'; // 文件分类
+}
+
+interface UploadFileResponse {
+  success: true;
+  data: UploadedFile.Info;
+}
+
+/**
+ * 获取文件信息
+ * GET /api/v1/files/{id}
+ */
+interface GetFileResponse {
+  success: true;
+  data: UploadedFile.Info;
+}
+
+/**
+ * OCR文字识别
+ * POST /api/v1/files/{id}/ocr
+ */
+interface OcrFileRequest {
+  language?: 'zh-CN' | 'en-US';    // 识别语言
+  ocrType?: 'general' | 'insurance'; // 识别类型
+}
+
+interface OcrFileResponse {
+  success: true;
+  data: {
+    text: string;                  // 识别的文字
+    confidence: number;            // 置信度 0-1
+    regions: Array<{              // 文字区域信息
+      text: string;
+      boundingBox: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+      };
+      confidence: number;
+    }>;
+    processTime: number;           // 处理耗时（毫秒）
+  };
+}
+
+/**
+ * 下载文件
+ * GET /api/v1/files/{id}/download
+ */
+interface DownloadFileResponse {
+  // 直接返回文件流
+  // Headers: Content-Type, Content-Disposition
+}
+```
+
+### 用户认证API
+```typescript
+/**
+ * 用户认证相关API端点
+ */
+
+/**
+ * 用户登录
+ * POST /api/v1/auth/login
+ */
+interface LoginRequest {
+  username: string;                // 用户名或邮箱
+  password: string;                // 密码
+  captcha?: string;               // 验证码（如需要）
+  rememberMe?: boolean;           // 记住登录状态
+}
+
+interface LoginResponse {
+  success: true;
+  data: {
+    user: {
+      id: number;
+      username: string;
+      email: string;
+      role: 'admin' | 'assessor' | 'viewer';
+      permissions: string[];
+    };
+    tokens: {
+      accessToken: string;        // 访问令牌
+      refreshToken: string;       // 刷新令牌
+      expiresIn: number;         // 过期时间（秒）
+    };
+  };
+}
+
+/**
+ * 刷新令牌
+ * POST /api/v1/auth/refresh
+ */
+interface RefreshTokenRequest {
+  refreshToken: string;
+}
+
+interface RefreshTokenResponse {
+  success: true;
+  data: {
+    accessToken: string;
+    expiresIn: number;
+  };
+}
+
+/**
+ * 用户登出
+ * POST /api/v1/auth/logout
+ */
+interface LogoutResponse {
+  success: true;
+  data: {
+    message: string;
+  };
+}
+
+/**
+ * 获取当前用户信息
+ * GET /api/v1/auth/me
+ */
+interface GetCurrentUserResponse {
+  success: true;
+  data: {
+    id: number;
+    username: string;
+    email: string;
+    role: string;
+    permissions: string[];
+    profile: {
+      displayName: string;
+      avatar?: string;
+      phone?: string;
+      department?: string;
+    };
+  };
+}
+```
+
+## 错误处理规范
+
+### 错误代码定义
+```typescript
+/**
+ * 标准化错误代码
+ */
+export enum ApiErrorCode {
+  // 通用错误
+  INTERNAL_ERROR = 'INTERNAL_ERROR',
+  INVALID_REQUEST = 'INVALID_REQUEST',
+  VALIDATION_ERROR = 'VALIDATION_ERROR',
+  RATE_LIMIT_EXCEEDED = 'RATE_LIMIT_EXCEEDED',
+  
+  // 认证授权错误
+  UNAUTHORIZED = 'UNAUTHORIZED',
+  INVALID_TOKEN = 'INVALID_TOKEN',
+  TOKEN_EXPIRED = 'TOKEN_EXPIRED',
+  INSUFFICIENT_PERMISSIONS = 'INSUFFICIENT_PERMISSIONS',
+  
+  // 资源相关错误
+  RESOURCE_NOT_FOUND = 'RESOURCE_NOT_FOUND',
+  RESOURCE_CONFLICT = 'RESOURCE_CONFLICT',
+  RESOURCE_LOCKED = 'RESOURCE_LOCKED',
+  
+  // 业务逻辑错误
+  INVALID_REPORT_STATUS = 'INVALID_REPORT_STATUS',
+  FILE_TOO_LARGE = 'FILE_TOO_LARGE',
+  UNSUPPORTED_FILE_TYPE = 'UNSUPPORTED_FILE_TYPE',
+  OCR_PROCESSING_FAILED = 'OCR_PROCESSING_FAILED',
+  AI_SERVICE_UNAVAILABLE = 'AI_SERVICE_UNAVAILABLE',
+  EXPORT_FAILED = 'EXPORT_FAILED',
+  
+  // 第三方服务错误
+  EXTERNAL_SERVICE_ERROR = 'EXTERNAL_SERVICE_ERROR',
+  DATABASE_ERROR = 'DATABASE_ERROR',
+  STORAGE_ERROR = 'STORAGE_ERROR',
+}
+
+/**
+ * 错误处理工具函数
+ */
+export class ApiError extends Error {
+  constructor(
+    public code: ApiErrorCode,
+    public message: string,
+    public statusCode: number = 500,
+    public details?: any
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+
+  toResponse(): ApiResponse {
+    return {
+      success: false,
+      error: {
+        code: this.code,
+        message: this.message,
+        details: this.details
+      },
+      requestId: generateRequestId(),
+      timestamp: Date.now()
+    };
+  }
+}
+
+/**
+ * 常用错误创建函数
+ */
+export const ApiErrors = {
+  badRequest: (message: string, details?: any) => 
+    new ApiError(ApiErrorCode.INVALID_REQUEST, message, 400, details),
+    
+  unauthorized: (message: string = '未授权访问') => 
+    new ApiError(ApiErrorCode.UNAUTHORIZED, message, 401),
+    
+  forbidden: (message: string = '权限不足') => 
+    new ApiError(ApiErrorCode.INSUFFICIENT_PERMISSIONS, message, 403),
+    
+  notFound: (resource: string = '资源') => 
+    new ApiError(ApiErrorCode.RESOURCE_NOT_FOUND, `${resource}不存在`, 404),
+    
+  conflict: (message: string) => 
+    new ApiError(ApiErrorCode.RESOURCE_CONFLICT, message, 409),
+    
+  validation: (details: any) => 
+    new ApiError(ApiErrorCode.VALIDATION_ERROR, '参数验证失败', 422, details),
+    
+  tooManyRequests: (message: string = '请求过于频繁') => 
+    new ApiError(ApiErrorCode.RATE_LIMIT_EXCEEDED, message, 429),
+    
+  internal: (message: string = '服务器内部错误') => 
+    new ApiError(ApiErrorCode.INTERNAL_ERROR, message, 500),
+};
+```
+
+## 接口文档规范
+
+### OpenAPI/Swagger文档
+```yaml
+# openapi.yaml
+openapi: 3.0.3
+info:
+  title: 公估报告智能撰写助手 API
+  description: 提供报告管理、文件处理、AI生成等功能的RESTful API
+  version: 1.0.0
+  contact:
+    name: API支持
+    email: api-support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: 开发环境
+  - url: https://api.pila-agent.com/v1
+    description: 生产环境
+
+security:
+  - BearerAuth: []
+
+paths:
+  /reports:
+    get:
+      summary: 获取报告列表
+      description: 分页获取用户的报告列表，支持筛选和搜索
+      tags:
+        - 报告管理
+      parameters:
+        - name: page
+          in: query
+          description: 页码
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: perPage
+          in: query
+          description: 每页数量
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: status
+          in: query
+          description: 报告状态筛选
+          schema:
+            $ref: '#/components/schemas/ReportStatus'
+        - name: search
+          in: query
+          description: 关键词搜索
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        '200':
+          description: 成功获取报告列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReportBaseInfo'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationInfo'
+                  requestId:
+                    type: string
+                  timestamp:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ReportBaseInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: "某公司火灾损失评估报告"
+        insuranceType:
+          $ref: '#/components/schemas/InsuranceType'
+        status:
+          $ref: '#/components/schemas/ReportStatus'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        userId:
+          type: integer
+
+    ReportStatus:
+      type: string
+      enum: [draft, review, completed, archived]
+      description: 报告状态
+
+    InsuranceType:
+      type: string
+      enum: [企业财产险, 车险, 责任险, 工程险, 货运险, 意外险, 其他]
+      description: 险种类型
+
+    PaginationInfo:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        perPage:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 156
+        totalPages:
+          type: integer
+          example: 8
+
+    ApiError:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: "VALIDATION_ERROR"
+            message:
+              type: string
+              example: "参数验证失败"
+            details:
+              type: object
+        requestId:
+          type: string
+        timestamp:
+          type: integer
+
+  responses:
+    BadRequest:
+      description: 请求参数错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
+    Unauthorized:
+      description: 未授权访问
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
+    InternalServerError:
+      description: 服务器内部错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+```
+
+## 性能和安全规范
+
+### 接口性能要求
+```typescript
+/**
+ * API性能标准
+ */
+export const PerformanceStandards = {
+  // 响应时间要求（毫秒）
+  responseTime: {
+    simple: 200,        // 简单查询接口
+    complex: 1000,      // 复杂业务接口
+    fileUpload: 5000,   // 文件上传接口
+    aiGeneration: 10000, // AI生成接口
+  },
+  
+  // 并发处理能力
+  concurrency: {
+    maxConcurrentUsers: 1000,     // 最大并发用户数
+    maxRequestsPerSecond: 5000,   // 每秒最大请求数
+    maxConnectionsPerUser: 10,    // 每用户最大连接数
+  },
+  
+  // 数据限制
+  limits: {
+    maxRequestSize: 50 * 1024 * 1024,  // 50MB
+    maxFileSize: 20 * 1024 * 1024,     // 20MB
+    maxBatchSize: 100,                  // 批量操作最大数量
+    maxPageSize: 100,                   // 分页最大数量
+  }
+};
+
+/**
+ * 接口限流配置
+ */
+export const RateLimitConfig = {
+  // 基于IP的限流
+  ipRateLimit: {
+    windowMs: 15 * 60 * 1000,  // 15分钟
+    max: 1000,                 // 最大请求数
+    message: '请求过于频繁，请稍后再试'
+  },
+  
+  // 基于用户的限流
+  userRateLimit: {
+    windowMs: 60 * 1000,       // 1分钟
+    max: 100,                  // 最大请求数
+    skipSuccessfulRequests: false
+  },
+  
+  // AI接口特殊限流
+  aiRateLimit: {
+    windowMs: 60 * 1000,       // 1分钟
+    max: 10,                   // 最大请求数
+    message: 'AI生成请求过于频繁，请稍后再试'
+  }
+};
+```
+
+### 安全规范
+```typescript
+/**
+ * API安全配置
+ */
+export const SecurityConfig = {
+  // JWT配置
+  jwt: {
+    accessTokenExpiry: '15m',     // 访问令牌15分钟过期
+    refreshTokenExpiry: '7d',     // 刷新令牌7天过期
+    algorithm: 'RS256',           // 使用RSA256算法
+    issuer: 'pila-agent-api',
+    audience: 'pila-agent-client'
+  },
+  
+  // 密码策略
+  password: {
+    minLength: 8,
+    requireUppercase: true,
+    requireLowercase: true,
+    requireNumbers: true,
+    requireSpecialChars: true,
+    preventReuse: 5,              // 防止重复使用最近5个密码
+    maxAge: 90 * 24 * 60 * 60,   // 90天强制更换
+  },
+  
+  // CORS配置
+  cors: {
+    origin: ['https://app.pila-agent.com'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    exposedHeaders: ['X-Total-Count'],
+    credentials: true,
+    maxAge: 86400                 // 预检请求缓存24小时
+  },
+  
+  // 内容安全策略
+  contentSecurity: {
+    maxFileSize: 20 * 1024 * 1024,    // 20MB
+    allowedFileTypes: [
+      'image/jpeg', 'image/png', 'image/gif',
+      'application/pdf', 'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain', 'text/csv'
+    ],
+    scanFiles: true,              // 启用文件病毒扫描
+    sanitizeInput: true,          // 输入内容净化
+  }
+};
+
+/**
+ * 安全中间件
+ */
+export const SecurityMiddleware = {
+  // 输入验证
+  validateInput: (schema: any) => (req: Request, res: Response, next: NextFunction) => {
+    // 使用Joi或Yup进行输入验证
+  },
+  
+  // SQL注入防护
+  preventSqlInjection: (req: Request, res: Response, next: NextFunction) => {
+    // 检测和阻止SQL注入攻击
+  },
+  
+  // XSS防护
+  preventXss: (req: Request, res: Response, next: NextFunction) => {
+    // 防止跨站脚本攻击
+  },
+  
+  // CSRF防护
+  preventCsrf: (req: Request, res: Response, next: NextFunction) => {
+    // 防止跨站请求伪造
+  }
+};
+```
+
+这个API设计规范提供了完整的RESTful API设计指导，包括URL设计、响应格式、错误处理、文档规范、性能要求和安全配置等各个方面，确保API的一致性、可维护性和安全性。

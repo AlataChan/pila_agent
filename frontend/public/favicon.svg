@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 54 54" width="54" height="54">
+  <!-- 橙红色圆角背景 -->
+  <rect width="54" height="54" fill="#FF4500" rx="8" ry="8"/>
+  
+  <!-- 外边框 -->
+  <rect x="6" y="6" width="42" height="42" fill="none" stroke="white" stroke-width="3" rx="4" ry="4"/>
+  
+  <!-- 内部几何图形 - 模仿原图的建筑物风格 -->
+  <g fill="white">
+    <!-- 左侧竖线 -->
+    <rect x="12" y="12" width="3" height="30"/>
+    
+    <!-- 右侧竖线 -->
+    <rect x="39" y="12" width="3" height="30"/>
+    
+    <!-- 顶部横线 -->
+    <rect x="12" y="12" width="30" height="3"/>
+    
+    <!-- 中间横线 -->
+    <rect x="12" y="27" width="18" height="3"/>
+    
+    <!-- 底部横线 -->
+    <rect x="12" y="39" width="30" height="3"/>
+    
+    <!-- 中间竖线 -->
+    <rect x="27" y="15" width="3" height="12"/>
+    
+    <!-- 右侧中间竖线 -->
+    <rect x="33" y="15" width="3" height="27"/>
+  </g>
+</svg> 

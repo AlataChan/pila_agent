@@ -1,0 +1,173 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Git 提交规范
+
+## 提交消息格式
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+### 格式说明
+- **type**: 提交类型（必需）
+- **scope**: 影响范围（可选）
+- **subject**: 简短描述（必需，不超过50字符）
+- **body**: 详细描述（可选，每行不超过72字符）
+- **footer**: 页脚信息（可选，关联Issue等）
+
+## 提交类型 (type)
+- `feat`: 新功能 (feature)
+- `fix`: 修复bug
+- `docs`: 文档修改
+- `style`: 代码格式修改（不影响功能）
+- `refactor`: 代码重构（既不是新增功能，也不是修复bug）
+- `perf`: 性能优化
+- `test`: 测试用例修改
+- `chore`: 构建过程、辅助工具或依赖库的变动
+- `ci`: CI/CD配置文件修改
+- `build`: 构建系统修改
+- `revert`: 回滚之前的提交
+
+## 影响范围 (scope)
+### 后端相关
+- `auth`: 用户认证和授权系统
+- `api`: API接口相关
+- `db`: 数据库相关（模型、迁移、查询）
+- `upload`: 文件上传功能
+- `ocr`: OCR文字识别服务
+- `ai`: AI服务和提示词管理
+- `report`: 报告生成和导出
+- `security`: 安全相关功能
+- `config`: 配置文件和环境变量
+
+### 前端相关
+- `ui`: 用户界面组件
+- `editor`: 富文本编辑器相关
+- `auth-ui`: 认证界面
+- `upload-ui`: 文件上传界面
+- `report-ui`: 报告管理界面
+- `hooks`: 自定义React Hooks
+- `types`: TypeScript类型定义
+- `styles`: 样式和主题
+
+### 项目管理
+- `deps`: 依赖包管理
+- `deploy`: 部署相关
+- `docker`: Docker配置
+- `test`: 测试相关
+- `docs`: 文档更新
+- `workflow`: GitHub Actions等工作流
+
+## 提交示例
+
+### 新功能示例
+```bash
+feat(auth): 添加JWT令牌刷新机制
+
+实现了令牌自动刷新功能，避免用户频繁重新登录：
+- 添加refresh token端点
+- 实现前端自动刷新逻辑
+- 更新认证中间件
+
+Closes #123
+```
+
+### Bug修复示例
+```bash
+fix(ocr): 修复PDF文件OCR识别失败问题
+
+解决了某些PDF文件无法正确识别文字的问题：
+- 修复PDF页面解析逻辑
+- 增加文件格式验证
+- 添加详细错误日志
+
+Fixes #156
+```
+
+### 文档更新示例
+```bash
+docs(api): 更新报告生成API文档
+
+- 添加请求参数说明
+- 更新响应示例
+- 补充错误码说明
+```
+
+### 重构示例
+```bash
+refactor(report): 重构报告生成服务架构
+
+将单体服务拆分为多个模块：
+- 提取章节生成器
+- 分离模板管理
+- 优化依赖注入
+```
+
+### 性能优化示例
+```bash
+perf(db): 优化报告查询性能
+
+- 添加数据库索引
+- 优化复杂查询语句
+- 实现查询结果缓存
+
+Performance: 查询时间从2.5s降低到0.3s
+```
+
+## 提交规则
+1. **原子性**: 每次提交只包含一个逻辑变更
+2. **简洁性**: subject简洁明了，使用动词开头
+3. **中文优先**: 项目团队主要使用中文，提交信息使用中文
+4. **时态**: 使用现在时态，如"添加"而不是"添加了"
+5. **关联性**: 重要变更必须关联相关Issue
+
+## 分支命名规范
+- `feature/功能描述`: 新功能分支
+- `fix/bug描述`: Bug修复分支  
+- `hotfix/紧急修复`: 生产环境紧急修复
+- `refactor/重构描述`: 代码重构分支
+- `docs/文档更新`: 文档更新分支
+
+### 分支命名示例
+```bash
+feature/ai-chapter-generation
+fix/ocr-pdf-parsing-error
+hotfix/auth-token-expiry
+refactor/report-service-architecture
+docs/api-documentation-update
+```
+
+## Conventional Commits 兼容
+本规范与 [Conventional Commits](mdc:https:/www.conventionalcommits.org) 标准兼容，支持：
+- 自动化版本管理
+- 自动生成CHANGELOG
+- 语义化版本发布
+
+## 检查工具
+建议使用以下工具确保提交规范：
+- commitlint: 检查提交消息格式
+- husky: Git hooks管理
+- conventional-changelog: 自动生成变更日志
+
+## 不良示例
+❌ 避免这样的提交消息：
+```bash
+update
+fix bug
+修改代码
+WIP
+临时提交
+```
+
+✅ 推荐这样的提交消息：
+```bash
+feat(auth): 添加用户密码重置功能
+fix(ocr): 修复图片识别精度问题
+docs: 更新项目README文档
+```

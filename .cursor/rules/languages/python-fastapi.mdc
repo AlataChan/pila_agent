@@ -1,0 +1,728 @@
+---
+description: 
+globs: *.py
+alwaysApply: false
+---
+# Python FastAPI 开发规范
+
+## 代码风格和格式化
+
+### 基础规范
+- 严格遵循 **PEP 8** 规范
+- 使用 **Black** 进行代码格式化（行长度88字符）
+- 使用 **isort** 进行导入排序
+- 使用 **mypy** 进行静态类型检查
+- 使用 **flake8** 进行代码质量检查
+
+### 导入顺序规范
+```python
+# 1. 标准库导入
+import os
+import sys
+from datetime import datetime
+from typing import Dict, List, Optional
+
+# 2. 第三方库导入
+import uvicorn
+from fastapi import FastAPI, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+# 3. 本地应用导入
+from app.core.config import settings
+from app.db.database import get_db
+from app.models.user import User
+from app.schemas.report import ReportCreate, ReportResponse
+```
+
+### 类型注解规范
+```python
+# 必须使用类型注解
+def create_report(
+    db: Session,
+    report_data: ReportCreate,
+    user_id: int
+) -> Report:
+    """创建新报告"""
+    pass
+
+# 复杂类型使用Union和Optional
+from typing import Union, Optional, List, Dict, Any
+
+def process_ocr_result(
+    file_content: bytes,
+    options: Optional[Dict[str, Any]] = None
+) -> Union[str, None]:
+    """处理OCR识别结果"""
+    pass
+```
+
+## FastAPI应用结构
+
+### 项目目录结构
+```
+backend/
+├── app/
+│   ├── __init__.py
+│   ├── main.py              # FastAPI应用入口
+│   ├── core/                # 核心配置
+│   │   ├── __init__.py
+│   │   ├── config.py        # 配置管理
+│   │   ├── security.py      # 安全相关
+│   │   └── exceptions.py    # 自定义异常
+│   ├── api/                 # API路由
+│   │   ├── __init__.py
+│   │   ├── deps.py          # 依赖注入
+│   │   └── v1/             # API版本
+│   │       ├── __init__.py
+│   │       ├── auth.py     # 认证端点
+│   │       ├── files.py    # 文件管理
+│   │       └── reports.py  # 报告管理
+│   ├── db/                  # 数据库相关
+│   │   ├── __init__.py
+│   │   ├── database.py     # 数据库连接
+│   │   ├── models/         # SQLAlchemy模型
+│   │   └── schemas/        # Pydantic模式
+│   ├── services/           # 业务逻辑层
+│   │   ├── __init__.py
+│   │   ├── auth_service.py
+│   │   ├── file_service.py
+│   │   ├── ocr_service.py
+│   │   └── ai_service.py
+│   └── utils/              # 工具函数
+├── tests/                  # 测试文件
+├── requirements.txt        # 依赖管理
+└── alembic/               # 数据库迁移
+```
+
+### 应用配置 (main.py)
+```python
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
+
+from app.api.v1 import auth, files, reports
+from app.core.config import settings
+from app.core.exceptions import CustomException
+
+# 创建FastAPI实例
+app = FastAPI(
+    title="公估报告智能撰写助手 API",
+    description="基于AI的保险理赔报告生成系统",
+    version="1.0.0",
+    docs_url="/docs" if settings.DEBUG else None,
+    redoc_url="/redoc" if settings.DEBUG else None
+)
+
+# 中间件配置
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.ALLOWED_HOSTS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=settings.ALLOWED_HOSTS
+)
+
+# 异常处理器
+@app.exception_handler(CustomException)
+async def custom_exception_handler(request: Request, exc: CustomException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}
+    )
+
+# 路由注册
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
+app.include_router(files.router, prefix="/api/v1/files", tags=["文件管理"])
+app.include_router(reports.router, prefix="/api/v1/reports", tags=["报告管理"])
+
+# 健康检查
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "version": "1.0.0"}
+```
+
+## API路由设计规范
+
+### 路由定义标准
+```python
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
+from fastapi.security import HTTPBearer
+from sqlalchemy.orm import Session
+
+from app.api.deps import get_current_user, get_db
+from app.schemas.report import ReportCreate, ReportResponse, ReportList
+from app.services.report_service import ReportService
+
+router = APIRouter()
+security = HTTPBearer()
+
+@router.post(
+    "/",
+    response_model=ReportResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="创建新的报告草稿",
+    description="创建一个新的空白报告草稿，用于后续编辑和AI生成"
+)
+async def create_report(
+    report_data: ReportCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> ReportResponse:
+    """
+    创建新的报告草稿
+    
+    Args:
+        report_data: 报告创建数据
+        current_user: 当前认证用户
+        db: 数据库会话
+        
+    Returns:
+        创建的报告信息
+        
+    Raises:
+        HTTPException: 当创建失败时
+    """
+    try:
+        report_service = ReportService(db)
+        report = await report_service.create_report(report_data, current_user.id)
+        return ReportResponse.from_orm(report)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"创建报告失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="创建报告失败"
+        )
+```
+
+### 文件上传处理
+```python
+@router.post(
+    "/upload",
+    response_model=FileUploadResponse,
+    status_code=status.HTTP_202_ACCEPTED
+)
+async def upload_file(
+    file: UploadFile = File(...),
+    report_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    上传文件并触发OCR处理
+    
+    支持的文件类型: PDF, JPG, PNG
+    最大文件大小: 10MB
+    """
+    # 文件验证
+    if file.content_type not in ["application/pdf", "image/jpeg", "image/png"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"不支持的文件类型: {file.content_type}"
+        )
+    
+    if file.size > 10 * 1024 * 1024:  # 10MB
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="文件大小超过10MB限制"
+        )
+    
+    try:
+        file_service = FileService(db)
+        file_record = await file_service.upload_file(
+            file, current_user.id, report_id
+        )
+        
+        # 异步触发OCR处理
+        from app.tasks.ocr_tasks import process_ocr
+        process_ocr.delay(file_record.id)
+        
+        return FileUploadResponse.from_orm(file_record)
+    except Exception as e:
+        logger.error(f"文件上传失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="文件上传失败"
+        )
+```
+
+## Pydantic模式设计
+
+### 请求和响应模式
+```python
+from datetime import datetime
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field, validator
+
+# 基础模式
+class BaseSchema(BaseModel):
+    class Config:
+        orm_mode = True
+        validate_assignment = True
+        use_enum_values = True
+
+# 报告创建请求
+class ReportCreate(BaseSchema):
+    title: str = Field(..., min_length=1, max_length=255, description="报告标题")
+    insurance_type: Optional[str] = Field(None, max_length=100, description="险种类型")
+    
+    @validator('title')
+    def validate_title(cls, v):
+        if not v.strip():
+            raise ValueError('报告标题不能为空')
+        return v.strip()
+
+# 报告响应模式
+class ReportResponse(BaseSchema):
+    id: int
+    title: str
+    insurance_type: Optional[str]
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    user_id: int
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "id": 1001,
+                "title": "某某公司-企业财产险-20240315火灾理赔报告",
+                "insurance_type": "企业财产险",
+                "status": "draft",
+                "created_at": "2024-03-15T10:00:00Z",
+                "updated_at": "2024-03-15T10:00:00Z",
+                "user_id": 1
+            }
+        }
+
+# 分页响应模式
+class PaginatedResponse(BaseSchema):
+    items: List[Any]
+    total: int
+    page: int = Field(..., ge=1)
+    per_page: int = Field(..., ge=1, le=100)
+    pages: int
+    
+    @validator('pages', always=True)
+    def calculate_pages(cls, v, values):
+        total = values.get('total', 0)
+        per_page = values.get('per_page', 20)
+        return (total + per_page - 1) // per_page
+
+# AI生成请求模式
+class GenerateChapterRequest(BaseSchema):
+    chapter_key: str = Field(..., description="章节标识")
+    context_text: str = Field(..., min_length=1, description="上下文文本")
+    options: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    
+    @validator('chapter_key')
+    def validate_chapter_key(cls, v):
+        valid_chapters = [
+            "accident_details", "policy_summary", "site_investigation",
+            "cause_analysis", "loss_assessment"
+        ]
+        if v not in valid_chapters:
+            raise ValueError(f'无效的章节类型: {v}')
+        return v
+```
+
+## 依赖注入规范
+
+### 通用依赖 (deps.py)
+```python
+from typing import Generator, Optional
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from jose import JWTError, jwt
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.core.security import verify_access_token
+from app.db.database import SessionLocal
+from app.models.user import User
+
+security = HTTPBearer()
+
+def get_db() -> Generator[Session, None, None]:
+    """数据库会话依赖"""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> User:
+    """获取当前认证用户"""
+    try:
+        payload = verify_access_token(credentials.credentials)
+        user_id: int = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="无效的认证令牌",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="无效的认证令牌",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="用户不存在"
+        )
+    
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="用户账户已禁用"
+        )
+    
+    return user
+
+def get_current_active_superuser(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """获取当前超级用户"""
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="权限不足"
+        )
+    return current_user
+```
+
+## 异常处理规范
+
+### 自定义异常类
+```python
+from fastapi import HTTPException, status
+
+class CustomException(Exception):
+    """自定义异常基类"""
+    def __init__(self, detail: str, status_code: int = status.HTTP_400_BAD_REQUEST):
+        self.detail = detail
+        self.status_code = status_code
+
+class AuthenticationError(CustomException):
+    """认证异常"""
+    def __init__(self, detail: str = "认证失败"):
+        super().__init__(detail, status.HTTP_401_UNAUTHORIZED)
+
+class PermissionError(CustomException):
+    """权限异常"""
+    def __init__(self, detail: str = "权限不足"):
+        super().__init__(detail, status.HTTP_403_FORBIDDEN)
+
+class ValidationError(CustomException):
+    """验证异常"""
+    def __init__(self, detail: str = "数据验证失败"):
+        super().__init__(detail, status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+class OCRServiceError(CustomException):
+    """OCR服务异常"""
+    def __init__(self, detail: str = "OCR处理失败"):
+        super().__init__(detail, status.HTTP_503_SERVICE_UNAVAILABLE)
+
+class AIServiceError(CustomException):
+    """AI服务异常"""
+    def __init__(self, detail: str = "AI服务调用失败"):
+        super().__init__(detail, status.HTTP_503_SERVICE_UNAVAILABLE)
+```
+
+## 服务层设计规范
+
+### 业务逻辑封装
+```python
+from typing import List, Optional
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+
+from app.core.exceptions import ValidationError, DatabaseError
+from app.db.models.report import Report
+from app.schemas.report import ReportCreate, ReportUpdate
+
+class ReportService:
+    """报告服务类"""
+    
+    def __init__(self, db: Session):
+        self.db = db
+    
+    async def create_report(
+        self, 
+        report_data: ReportCreate, 
+        user_id: int
+    ) -> Report:
+        """创建新报告"""
+        try:
+            db_report = Report(
+                title=report_data.title,
+                insurance_type=report_data.insurance_type,
+                user_id=user_id,
+                content_json={}
+            )
+            self.db.add(db_report)
+            self.db.commit()
+            self.db.refresh(db_report)
+            return db_report
+        except IntegrityError as e:
+            self.db.rollback()
+            raise ValidationError("报告标题已存在")
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"创建报告失败: {str(e)}")
+            raise DatabaseError("数据库操作失败")
+    
+    async def get_user_reports(
+        self, 
+        user_id: int, 
+        skip: int = 0, 
+        limit: int = 20
+    ) -> List[Report]:
+        """获取用户报告列表"""
+        return self.db.query(Report)\
+            .filter(Report.user_id == user_id)\
+            .offset(skip)\
+            .limit(limit)\
+            .all()
+    
+    async def update_report_content(
+        self,
+        report_id: int,
+        user_id: int,
+        chapter_key: str,
+        content: str
+    ) -> Report:
+        """更新报告章节内容"""
+        report = self.db.query(Report)\
+            .filter(Report.id == report_id, Report.user_id == user_id)\
+            .first()
+        
+        if not report:
+            raise ValidationError("报告不存在或无权限访问")
+        
+        # 更新章节内容
+        if not report.content_json:
+            report.content_json = {}
+        
+        report.content_json[chapter_key] = content
+        
+        # 标记字段已修改
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(report, "content_json")
+        
+        try:
+            self.db.commit()
+            self.db.refresh(report)
+            return report
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"更新报告内容失败: {str(e)}")
+            raise DatabaseError("更新失败")
+```
+
+## 测试规范
+
+### 单元测试
+```python
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from app.main import app
+from app.core.config import settings
+from app.db.database import get_db, Base
+
+# 测试数据库配置
+SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def override_get_db():
+    try:
+        db = TestingSessionLocal()
+        yield db
+    finally:
+        db.close()
+
+app.dependency_overrides[get_db] = override_get_db
+
+@pytest.fixture
+def client():
+    Base.metadata.create_all(bind=engine)
+    with TestClient(app) as c:
+        yield c
+    Base.metadata.drop_all(bind=engine)
+
+@pytest.fixture
+def auth_headers(client):
+    # 创建测试用户并获取token
+    response = client.post("/api/v1/auth/register", json={
+        "username": "testuser",
+        "email": "test@example.com",
+        "password": "testpass123"
+    })
+    
+    login_response = client.post("/api/v1/auth/login", data={
+        "username": "testuser",
+        "password": "testpass123"
+    })
+    
+    token = login_response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+def test_create_report(client, auth_headers):
+    """测试创建报告"""
+    response = client.post(
+        "/api/v1/reports/",
+        json={"title": "测试报告", "insurance_type": "企业财产险"},
+        headers=auth_headers
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["title"] == "测试报告"
+    assert data["insurance_type"] == "企业财产险"
+    assert data["status"] == "draft"
+```
+
+## 日志记录规范
+
+### 日志配置
+```python
+import logging
+import sys
+from typing import Any
+
+from loguru import logger
+from app.core.config import settings
+
+class InterceptHandler(logging.Handler):
+    def emit(self, record):
+        # 获取对应的Loguru级别
+        try:
+            level = logger.level(record.levelname).name
+        except ValueError:
+            level = record.levelno
+
+        # 查找调用方
+        frame, depth = logging.currentframe(), 2
+        while frame.f_code.co_filename == logging.__file__:
+            frame = frame.f_back
+            depth += 1
+
+        logger.opt(depth=depth, exception=record.exc_info).log(
+            level, record.getMessage()
+        )
+
+def setup_logging():
+    # 移除默认处理器
+    logger.remove()
+    
+    # 添加自定义格式的控制台输出
+    logger.add(
+        sys.stdout,
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
+               "<level>{level: <8}</level> | "
+               "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
+               "<level>{message}</level>",
+        level=settings.LOG_LEVEL
+    )
+    
+    # 添加文件输出
+    logger.add(
+        "logs/app.log",
+        rotation="10 MB",
+        retention="30 days",
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+        level=settings.LOG_LEVEL
+    )
+    
+    # 替换标准库日志
+    logging.basicConfig(handlers=[InterceptHandler()], level=0)
+
+# 业务日志记录示例
+def log_business_operation(operation: str, user_id: int, details: Any = None):
+    """记录业务操作日志"""
+    logger.info(
+        f"业务操作: {operation}",
+        extra={
+            "user_id": user_id,
+            "operation": operation,
+            "details": details,
+            "business_log": True
+        }
+    )
+```
+
+## 性能优化建议
+
+### 数据库查询优化
+```python
+# 使用select_in_loading避免N+1问题
+from sqlalchemy.orm import selectinload
+
+def get_reports_with_files(db: Session, user_id: int):
+    return db.query(Report)\
+        .options(selectinload(Report.uploaded_files))\
+        .filter(Report.user_id == user_id)\
+        .all()
+
+# 使用索引和分页
+def get_reports_paginated(
+    db: Session, 
+    user_id: int, 
+    skip: int = 0, 
+    limit: int = 20
+):
+    return db.query(Report)\
+        .filter(Report.user_id == user_id)\
+        .order_by(Report.created_at.desc())\
+        .offset(skip)\
+        .limit(limit)\
+        .all()
+```
+
+### 缓存策略
+```python
+from functools import lru_cache
+import redis
+import json
+
+redis_client = redis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT)
+
+@lru_cache(maxsize=100)
+def get_prompt_template(chapter_type: str) -> str:
+    """缓存提示词模板"""
+    # 从数据库或文件获取模板
+    pass
+
+def cache_ai_result(key: str, result: dict, expire: int = 3600):
+    """缓存AI生成结果"""
+    redis_client.setex(key, expire, json.dumps(result, ensure_ascii=False))
+
+def get_cached_ai_result(key: str) -> dict:
+    """获取缓存的AI结果"""
+    cached = redis_client.get(key)
+    if cached:
+        return json.loads(cached)
+    return None
+```

@@ -1,0 +1,945 @@
+---
+description: 
+globs: *.tsx
+alwaysApply: false
+---
+# React + Next.js 开发规范
+
+## 项目结构规范
+
+### Next.js App Router 目录结构
+```
+frontend/
+├── app/                     # App Router (Next.js 13+)
+│   ├── globals.css         # 全局样式
+│   ├── layout.tsx          # 根布局
+│   ├── page.tsx            # 首页
+│   ├── loading.tsx         # 全局加载组件
+│   ├── error.tsx           # 全局错误组件
+│   ├── not-found.tsx       # 404页面
+│   ├── auth/               # 认证相关页面
+│   │   ├── login/
+│   │   │   └── page.tsx
+│   │   └── register/
+│   │       └── page.tsx
+│   ├── reports/            # 报告管理页面
+│   │   ├── page.tsx        # 报告列表
+│   │   ├── create/
+│   │   │   └── page.tsx
+│   │   └── [id]/
+│   │       ├── page.tsx    # 报告详情
+│   │       └── edit/
+│   │           └── page.tsx
+│   └── api/                # API路由
+│       ├── auth/
+│       └── reports/
+├── components/             # 可复用组件
+│   ├── ui/                # 基础UI组件
+│   ├── forms/             # 表单组件
+│   ├── layout/            # 布局组件
+│   └── features/          # 功能组件
+├── lib/                   # 工具库
+├── hooks/                 # 自定义Hooks
+├── types/                 # TypeScript类型定义
+├── utils/                 # 工具函数
+├── styles/                # 样式文件
+└── public/                # 静态资源
+```
+
+### 组件分类和命名
+```typescript
+// 基础UI组件 (components/ui/)
+export const Button: React.FC<ButtonProps> = ({ children, variant, ...props }) => {
+  return <button className={cn(buttonVariants({ variant }))} {...props}>{children}</button>;
+};
+
+// 表单组件 (components/forms/)
+export const ReportForm: React.FC<ReportFormProps> = ({ onSubmit, initialData }) => {
+  // 表单逻辑
+};
+
+// 功能组件 (components/features/)
+export const ReportEditor: React.FC<ReportEditorProps> = ({ reportId }) => {
+  // 复杂业务逻辑
+};
+
+// 布局组件 (components/layout/)
+export const DashboardLayout: React.FC<{ children: ReactNode }> = ({ children }) => {
+  // 布局逻辑
+};
+```
+
+## React组件开发规范
+
+### 函数式组件标准
+```typescript
+import React, { useState, useEffect, useCallback, memo } from 'react';
+import { cn } from '@/lib/utils';
+
+interface ReportCardProps {
+  /** 报告数据 */
+  report: Report.BaseInfo;
+  /** 是否显示编辑按钮 */
+  showEditButton?: boolean;
+  /** 点击事件回调 */
+  onClick?: (reportId: number) => void;
+  /** 自定义样式类名 */
+  className?: string;
+  /** 测试ID */
+  'data-testid'?: string;
+}
+
+/**
+ * 报告卡片组件
+ * 
+ * @param props 组件属性
+ * @returns React组件
+ */
+export const ReportCard: React.FC<ReportCardProps> = memo(({
+  report,
+  showEditButton = true,
+  onClick,
+  className,
+  'data-testid': testId
+}) => {
+  // 状态管理
+  const [isHovered, setIsHovered] = useState(false);
+  
+  // 事件处理
+  const handleClick = useCallback(() => {
+    onClick?.(report.id);
+  }, [onClick, report.id]);
+  
+  // 样式计算
+  const cardClasses = cn(
+    "p-4 border rounded-lg transition-all duration-200",
+    "hover:shadow-md hover:border-blue-300",
+    isHovered && "bg-gray-50",
+    className
+  );
+  
+  return (
+    <div
+      className={cardClasses}
+      onClick={handleClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      data-testid={testId}
+    >
+      <h3 className="text-lg font-semibold mb-2">{report.title}</h3>
+      <p className="text-sm text-gray-600 mb-2">险种: {report.insuranceType}</p>
+      <div className="flex justify-between items-center">
+        <span className={cn(
+          "px-2 py-1 rounded text-xs font-medium",
+          {
+            'bg-yellow-100 text-yellow-800': report.status === 'draft',
+            'bg-blue-100 text-blue-800': report.status === 'review',
+            'bg-green-100 text-green-800': report.status === 'completed',
+          }
+        )}>
+          {getStatusText(report.status)}
+        </span>
+        
+        {showEditButton && (
+          <button
+            className="text-blue-600 hover:text-blue-800 text-sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              // 编辑逻辑
+            }}
+          >
+            编辑
+          </button>
+        )}
+      </div>
+    </div>
+  );
+});
+
+ReportCard.displayName = 'ReportCard';
+
+// 辅助函数
+function getStatusText(status: ReportStatus): string {
+  const statusMap: Record<ReportStatus, string> = {
+    draft: '草稿',
+    review: '审核中',
+    completed: '已完成',
+    archived: '已归档'
+  };
+  return statusMap[status] || status;
+}
+```
+
+### 自定义Hooks规范
+```typescript
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { toast } from '@/components/ui/use-toast';
+
+/**
+ * 报告编辑器Hook
+ * 
+ * @param reportId 报告ID
+ * @returns Hook返回值
+ */
+export function useReportEditor(reportId: string) {
+  // 状态管理
+  const [report, setReport] = useState<Report.Full | null>(null);
+  const [content, setContent] = useState<Report.Content>({});
+  const [isDirty, setIsDirty] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+  
+  // Refs
+  const saveTimeoutRef = useRef<NodeJS.Timeout>();
+  const abortControllerRef = useRef<AbortController>();
+  
+  const router = useRouter();
+  
+  // 加载报告数据
+  const loadReport = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      const response = await fetch(`/api/reports/${reportId}`, {
+        signal: abortControllerRef.current?.signal
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to load report: ${response.statusText}`);
+      }
+      
+      const reportData = await response.json();
+      setReport(reportData);
+      setContent(reportData.content || {});
+    } catch (err) {
+      if (err instanceof Error && err.name !== 'AbortError') {
+        setError(err);
+        toast({
+          title: "加载失败",
+          description: "无法加载报告数据，请重试",
+          variant: "destructive"
+        });
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [reportId]);
+  
+  // 更新章节内容
+  const updateContent = useCallback((
+    chapter: keyof Report.Content,
+    value: string
+  ) => {
+    setContent(prev => ({
+      ...prev,
+      [chapter]: value
+    }));
+    setIsDirty(true);
+    
+    // 自动保存（防抖）
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    saveTimeoutRef.current = setTimeout(() => {
+      saveContent();
+    }, 2000); // 2秒后自动保存
+  }, []);
+  
+  // 保存内容
+  const saveContent = useCallback(async () => {
+    if (!isDirty || isSaving) return;
+    
+    try {
+      setIsSaving(true);
+      setError(null);
+      
+      const response = await fetch(`/api/reports/${reportId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ content }),
+        signal: abortControllerRef.current?.signal
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to save report: ${response.statusText}`);
+      }
+      
+      setIsDirty(false);
+      toast({
+        title: "保存成功",
+        description: "报告内容已保存",
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name !== 'AbortError') {
+        setError(err);
+        toast({
+          title: "保存失败",
+          description: "无法保存报告内容，请重试",
+          variant: "destructive"
+        });
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  }, [reportId, content, isDirty, isSaving]);
+  
+  // AI生成章节
+  const generateChapter = useCallback(async (
+    chapterType: AI.ChapterType,
+    contextText: string
+  ) => {
+    try {
+      setError(null);
+      
+      const response = await fetch(`/api/reports/${reportId}/generate-chapter`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chapterKey: chapterType,
+          contextText
+        }),
+        signal: abortControllerRef.current?.signal
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to generate chapter: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        updateContent(chapterType, result.content);
+        toast({
+          title: "生成成功",
+          description: "AI章节内容已生成",
+        });
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name !== 'AbortError') {
+        setError(err);
+        toast({
+          title: "生成失败",
+          description: "AI章节生成失败，请重试",
+          variant: "destructive"
+        });
+      }
+    }
+  }, [reportId, updateContent]);
+  
+  // 清除错误
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+  
+  // 组件挂载时加载数据
+  useEffect(() => {
+    abortControllerRef.current = new AbortController();
+    loadReport();
+    
+    return () => {
+      // 清理定时器和取消请求
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      abortControllerRef.current?.abort();
+    };
+  }, [loadReport]);
+  
+  // 页面离开时保存
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = '您有未保存的更改，确定要离开吗？';
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
+  
+  return {
+    // 状态
+    report,
+    content,
+    isDirty,
+    isSaving,
+    isLoading,
+    error,
+    
+    // 操作
+    updateContent,
+    saveContent,
+    generateChapter,
+    clearError,
+    reload: loadReport
+  };
+}
+
+/**
+ * 文件上传Hook
+ */
+export function useFileUpload() {
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [uploadingFiles, setUploadingFiles] = useState<Set<string>>(new Set());
+  
+  const uploadFile = useCallback(async (
+    file: File,
+    reportId?: number,
+    onProgress?: (progress: number) => void
+  ): Promise<UploadedFile.Info> => {
+    const fileKey = `${file.name}-${file.size}`;
+    
+    try {
+      setUploadingFiles(prev => new Set(prev).add(fileKey));
+      setUploadProgress(prev => ({ ...prev, [fileKey]: 0 }));
+      
+      const formData = new FormData();
+      formData.append('file', file);
+      if (reportId) {
+        formData.append('reportId', reportId.toString());
+      }
+      
+      const xhr = new XMLHttpRequest();
+      
+      return new Promise((resolve, reject) => {
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const progress = Math.round((e.loaded / e.total) * 100);
+            setUploadProgress(prev => ({ ...prev, [fileKey]: progress }));
+            onProgress?.(progress);
+          }
+        });
+        
+        xhr.addEventListener('load', () => {
+          if (xhr.status === 200 || xhr.status === 202) {
+            const result = JSON.parse(xhr.responseText);
+            resolve(result);
+          } else {
+            reject(new Error(`Upload failed: ${xhr.statusText}`));
+          }
+        });
+        
+        xhr.addEventListener('error', () => {
+          reject(new Error('Upload failed'));
+        });
+        
+        xhr.open('POST', '/api/files/upload');
+        xhr.send(formData);
+      });
+    } finally {
+      setUploadingFiles(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(fileKey);
+        return newSet;
+      });
+      setUploadProgress(prev => {
+        const { [fileKey]: _, ...rest } = prev;
+        return rest;
+      });
+    }
+  }, []);
+  
+  return {
+    uploadFile,
+    uploadProgress,
+    uploadingFiles
+  };
+}
+```
+
+### 表单处理规范
+```typescript
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+
+// 表单验证模式
+const reportFormSchema = z.object({
+  title: z.string()
+    .min(1, '报告标题不能为空')
+    .max(255, '报告标题不能超过255个字符'),
+  insuranceType: z.enum(['企业财产险', '车险', '责任险', '其他'])
+    .optional(),
+});
+
+type ReportFormData = z.infer<typeof reportFormSchema>;
+
+interface ReportFormProps {
+  initialData?: Partial<ReportFormData>;
+  onSubmit: (data: ReportFormData) => Promise<void>;
+  isLoading?: boolean;
+}
+
+export const ReportForm: React.FC<ReportFormProps> = ({
+  initialData,
+  onSubmit,
+  isLoading = false
+}) => {
+  const {
+    control,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+    reset
+  } = useForm<ReportFormData>({
+    resolver: zodResolver(reportFormSchema),
+    defaultValues: {
+      title: initialData?.title || '',
+      insuranceType: initialData?.insuranceType || undefined
+    }
+  });
+  
+  const handleFormSubmit = async (data: ReportFormData) => {
+    try {
+      await onSubmit(data);
+      toast({
+        title: "成功",
+        description: "报告已保存",
+      });
+    } catch (error) {
+      toast({
+        title: "错误",
+        description: "保存失败，请重试",
+        variant: "destructive"
+      });
+    }
+  };
+  
+  return (
+    <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4">
+      <div>
+        <Controller
+          name="title"
+          control={control}
+          render={({ field }) => (
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                报告标题 *
+              </label>
+              <input
+                {...field}
+                type="text"
+                className={cn(
+                  "w-full px-3 py-2 border rounded-md",
+                  errors.title && "border-red-500"
+                )}
+                placeholder="请输入报告标题"
+              />
+              {errors.title && (
+                <p className="text-red-500 text-sm mt-1">
+                  {errors.title.message}
+                </p>
+              )}
+            </div>
+          )}
+        />
+      </div>
+      
+      <div>
+        <Controller
+          name="insuranceType"
+          control={control}
+          render={({ field }) => (
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                险种类型
+              </label>
+              <select
+                {...field}
+                className="w-full px-3 py-2 border rounded-md"
+              >
+                <option value="">请选择险种</option>
+                <option value="企业财产险">企业财产险</option>
+                <option value="车险">车险</option>
+                <option value="责任险">责任险</option>
+                <option value="其他">其他</option>
+              </select>
+            </div>
+          )}
+        />
+      </div>
+      
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={isSubmitting || isLoading}
+          className={cn(
+            "px-4 py-2 bg-blue-600 text-white rounded-md",
+            "hover:bg-blue-700 disabled:opacity-50"
+          )}
+        >
+          {isSubmitting ? '保存中...' : '保存'}
+        </button>
+        
+        <button
+          type="button"
+          onClick={() => reset()}
+          className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
+        >
+          重置
+        </button>
+      </div>
+    </form>
+  );
+};
+```
+
+## Next.js 特定规范
+
+### App Router页面组件
+```typescript
+// app/reports/[id]/page.tsx
+import { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+import { ReportDetail } from '@/components/features/ReportDetail';
+
+interface PageProps {
+  params: { id: string };
+  searchParams: { [key: string]: string | string[] | undefined };
+}
+
+// 元数据生成
+export async function generateMetadata(
+  { params }: PageProps
+): Promise<Metadata> {
+  try {
+    const report = await getReport(params.id);
+    
+    return {
+      title: `${report.title} - 公估报告`,
+      description: `查看报告详情: ${report.title}`,
+    };
+  } catch {
+    return {
+      title: '报告不存在',
+    };
+  }
+}
+
+// 页面组件
+export default async function ReportPage({ params }: PageProps) {
+  try {
+    const report = await getReport(params.id);
+    
+    if (!report) {
+      notFound();
+    }
+    
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <ReportDetail reportId={params.id} initialData={report} />
+      </div>
+    );
+  } catch (error) {
+    console.error('Error loading report:', error);
+    throw error; // 触发error.tsx
+  }
+}
+
+// 数据获取函数
+async function getReport(id: string): Promise<Report.Full | null> {
+  const response = await fetch(`${process.env.API_URL}/reports/${id}`, {
+    headers: {
+      'Authorization': `Bearer ${process.env.API_TOKEN}`,
+    },
+    next: { revalidate: 300 } // 5分钟缓存
+  });
+  
+  if (!response.ok) {
+    if (response.status === 404) {
+      return null;
+    }
+    throw new Error('Failed to fetch report');
+  }
+  
+  return response.json();
+}
+```
+
+### API路由处理
+```typescript
+// app/api/reports/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { auth } from '@/lib/auth';
+
+const createReportSchema = z.object({
+  title: z.string().min(1).max(255),
+  insuranceType: z.string().optional(),
+});
+
+export async function GET(request: NextRequest) {
+  try {
+    const user = await auth(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '20');
+    
+    const reports = await getReports(user.id, page, limit);
+    
+    return NextResponse.json(reports);
+  } catch (error) {
+    console.error('Error fetching reports:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const user = await auth(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    
+    const body = await request.json();
+    const validatedData = createReportSchema.parse(body);
+    
+    const report = await createReport(validatedData, user.id);
+    
+    return NextResponse.json(report, { status: 201 });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: error.errors },
+        { status: 400 }
+      );
+    }
+    
+    console.error('Error creating report:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+```
+
+### 中间件配置
+```typescript
+// middleware.ts
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { jwtVerify } from 'jose';
+
+const protectedRoutes = ['/reports', '/dashboard'];
+const authRoutes = ['/auth/login', '/auth/register'];
+
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  
+  // 检查是否是受保护的路由
+  const isProtectedRoute = protectedRoutes.some(route => 
+    pathname.startsWith(route)
+  );
+  
+  // 检查是否是认证路由
+  const isAuthRoute = authRoutes.includes(pathname);
+  
+  // 获取token
+  const token = request.cookies.get('auth-token')?.value;
+  
+  if (isProtectedRoute) {
+    if (!token) {
+      return NextResponse.redirect(new URL('/auth/login', request.url));
+    }
+    
+    try {
+      await jwtVerify(token, new TextEncoder().encode(process.env.JWT_SECRET!));
+    } catch {
+      return NextResponse.redirect(new URL('/auth/login', request.url));
+    }
+  }
+  
+  if (isAuthRoute && token) {
+    try {
+      await jwtVerify(token, new TextEncoder().encode(process.env.JWT_SECRET!));
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    } catch {
+      // Token无效，继续到认证页面
+    }
+  }
+  
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+  ],
+};
+```
+
+## 性能优化规范
+
+### 代码分割和懒加载
+```typescript
+import { lazy, Suspense } from 'react';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
+
+// 懒加载组件
+const LazyReportEditor = lazy(() => import('@/components/features/ReportEditor'));
+const LazyFileUpload = lazy(() => import('@/components/features/FileUpload'));
+
+export function ReportDetailPage() {
+  return (
+    <div>
+      <Suspense fallback={<LoadingSpinner />}>
+        <LazyReportEditor reportId="123" />
+      </Suspense>
+      
+      <Suspense fallback={<div>加载文件上传组件...</div>}>
+        <LazyFileUpload />
+      </Suspense>
+    </div>
+  );
+}
+
+// 动态导入
+async function loadHeavyComponent() {
+  const { HeavyComponent } = await import('@/components/HeavyComponent');
+  return HeavyComponent;
+}
+```
+
+### 图片优化
+```typescript
+import Image from 'next/image';
+
+export function ReportImage({ src, alt }: { src: string; alt: string }) {
+  return (
+    <Image
+      src={src}
+      alt={alt}
+      width={800}
+      height={600}
+      priority={false} // 非关键图片设为false
+      placeholder="blur"
+      blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAIAAoDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAhEAACAQMDBQAAAAAAAAAAAAABAgMABAUGIWGRkqGx0f/EABUBAQEAAAAAAAAAAAAAAAAAAAMF/8QAGhEAAgIDAAAAAAAAAAAAAAAAAAECEgMRkf/aAAwDAQACEQMRAD8AltJagyeH0AthI5xdrLcNM91BF5pX2HaH9bcfaSXWGaRmknyLik3HGYe9cOVWFJH0s5Ii3LMGR4m6jBgIUspsT3hF+YZ8WqGDJi2lJSNgJ8vl+WktY/kG4b4FLOKr5+5SkDnSVzlsE4rZPJslO9vOAOhvfvJz6zFe0Z20bZ7VT0P5DZqq8uNMk4O5L2mClpV4z/YT3FbNGpz0JdJOJCLYZKyJiCVhz8CfQ7jMYzOk0HrGlaSh0vZBftJMJoqOpeDtqJdVhjvwlKfLKhz+5S0EkJKI7dY4a7+QTTY1QKn9ASVTXHfkO"
+      className="rounded-lg"
+    />
+  );
+}
+```
+
+### 缓存策略
+```typescript
+import { unstable_cache } from 'next/cache';
+
+// 缓存函数
+export const getCachedReports = unstable_cache(
+  async (userId: number) => {
+    return getReports(userId);
+  },
+  ['reports'], // 缓存键
+  {
+    revalidate: 300, // 5分钟重新验证
+    tags: ['reports'] // 缓存标签
+  }
+);
+
+// 在Server Action中使用revalidateTag
+export async function createReport(data: CreateReportData) {
+  const report = await createReportInDB(data);
+  
+  // 清除相关缓存
+  revalidateTag('reports');
+  
+  return report;
+}
+```
+
+## 错误处理和边界
+
+### 错误边界组件
+```typescript
+'use client';
+
+import React from 'react';
+
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+  fallback?: React.ComponentType<{ error: Error; reset: () => void }>;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error?: Error;
+}
+
+export class ErrorBoundary extends React.Component<
+  ErrorBoundaryProps,
+  ErrorBoundaryState
+> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+  
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Error caught by boundary:', error, errorInfo);
+    
+    // 发送错误到监控服务
+    if (typeof window !== 'undefined') {
+      // 客户端错误报告
+      reportError(error, errorInfo);
+    }
+  }
+  
+  render() {
+    if (this.state.hasError) {
+      const FallbackComponent = this.props.fallback || DefaultErrorFallback;
+      
+      return (
+        <FallbackComponent
+          error={this.state.error!}
+          reset={() => this.setState({ hasError: false, error: undefined })}
+        />
+      );
+    }
+    
+    return this.props.children;
+  }
+}
+
+function DefaultErrorFallback({ error, reset }: { error: Error; reset: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-64 p-8 text-center">
+      <h2 className="text-xl font-semibold text-red-600 mb-4">
+        出现了一些问题
+      </h2>
+      <p className="text-gray-600 mb-4">
+        {error.message || '发生了未知错误'}
+      </p>
+      <button
+        onClick={reset}
+        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+      >
+        重试
+      </button>
+    </div>
+  );
+}
+```
+
+这个React + Next.js规范文件提供了完整的前端开发指导，包括项目结构、组件开发、Hooks使用、表单处理、Next.js特定功能、性能优化和错误处理等各个方面。
